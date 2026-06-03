@@ -1,10 +1,8 @@
 #include "truco.h"
 #include "truco_internal.h"
 
+#include <stdlib.h>
 #include <string.h>
-
-#define G(game) ((truco_game_impl *)(void *)(const void *)(game))
-#define C(config) ((truco_config_impl *)(void *)(const void *)(config))
 
 
 typedef enum envido_bid {
@@ -29,7 +27,7 @@ static unsigned int next_random(unsigned int *state)
     return *state;
 }
 
-static unsigned int card_face_value(truco_card card)
+static unsigned int card_face_value(truco_card_internal card)
 {
     if (card.rank >= 10u) {
         return 0u;
@@ -39,12 +37,12 @@ static unsigned int card_face_value(truco_card card)
 
 static int same_team(const truco_game *game, unsigned int left, unsigned int right)
 {
-    return G(game)->config.team_for_player[left] == G(game)->config.team_for_player[right];
+    return game->settings.team_for_player[left] == game->settings.team_for_player[right];
 }
 
 static unsigned int team_for(const truco_game *game, unsigned int player)
 {
-    return G(game)->config.team_for_player[player];
+    return game->settings.team_for_player[player];
 }
 
 static unsigned int opposing_team(unsigned int team)
@@ -57,9 +55,9 @@ static int has_any_card_been_played(const truco_game *game)
     unsigned int player;
     unsigned int slot;
 
-    for (player = 0u; player < G(game)->config.player_count; ++player) {
+    for (player = 0u; player < game->settings.player_count; ++player) {
         for (slot = 0u; slot < TRUCO_HAND_CARDS; ++slot) {
-            if (G(game)->played_slots[player][slot]) {
+            if (game->played_slots[player][slot]) {
                 return 1;
             }
         }
@@ -72,24 +70,24 @@ static unsigned int falta_envido_points(const truco_game *game,
                                         unsigned int calling_team)
 {
     unsigned int other = opposing_team(calling_team);
-    unsigned int leader = G(game)->score[calling_team] > G(game)->score[other]
-                              ? G(game)->score[calling_team]
-                              : G(game)->score[other];
+    unsigned int leader = game->score[calling_team] > game->score[other]
+                              ? game->score[calling_team]
+                              : game->score[other];
 
     if (leader < 15u) {
         return 15u - leader;
     }
 
-    return G(game)->config.target_score - leader;
+    return game->settings.target_score - leader;
 }
 
 static int compare_mano_order(const truco_game *game,
                               unsigned int left_player,
                               unsigned int right_player)
 {
-    unsigned int player_count = G(game)->config.player_count;
-    unsigned int left_distance = (left_player + player_count - G(game)->mano) % player_count;
-    unsigned int right_distance = (right_player + player_count - G(game)->mano) % player_count;
+    unsigned int player_count = game->settings.player_count;
+    unsigned int left_distance = (left_player + player_count - game->mano) % player_count;
+    unsigned int right_distance = (right_player + player_count - game->mano) % player_count;
 
     if (left_distance < right_distance) {
         return -1;
@@ -102,24 +100,24 @@ static int compare_mano_order(const truco_game *game,
 
 static void add_score(truco_game *game, unsigned int team, unsigned int points)
 {
-    G(game)->score[team] += points;
-    if (G(game)->score[team] >= G(game)->config.target_score) {
-        G(game)->phase = TRUCO_PHASE_GAME_OVER;
+    game->score[team] += points;
+    if (game->score[team] >= game->settings.target_score) {
+        game->phase = TRUCO_PHASE_GAME_OVER;
     }
 }
 
 static int compute_hand_winner(const truco_game *game)
 {
-    int first = G(game)->trick_winner_team[0];
-    int second = G(game)->trick_winner_team[1];
-    int third = G(game)->trick_winner_team[2];
-    unsigned int mano_team = team_for(game, G(game)->mano);
+    int first = game->trick_winner_team[0];
+    int second = game->trick_winner_team[1];
+    int third = game->trick_winner_team[2];
+    unsigned int mano_team = team_for(game, game->mano);
 
-    if (G(game)->current_trick == 0u) {
+    if (game->current_trick == 0u) {
         return -2;
     }
 
-    if (G(game)->current_trick == 1u) {
+    if (game->current_trick == 1u) {
         if (first == -1 && second != -1) {
             return second;
         }
@@ -164,8 +162,8 @@ static void resolve_current_trick(truco_game *game)
     int best_team = -1;
     int tied_across_teams = 0;
 
-    for (player = 0u; player < G(game)->config.player_count; ++player) {
-        if (!G(game)->trick_played[G(game)->current_trick][player]) {
+    for (player = 0u; player < game->settings.player_count; ++player) {
+        if (!game->trick_played[game->current_trick][player]) {
             continue;
         }
 
@@ -177,8 +175,8 @@ static void resolve_current_trick(truco_game *game)
         }
 
         {
-            int cmp = truco_card_compare(G(game)->trick_cards[G(game)->current_trick][player],
-                                         G(game)->trick_cards[G(game)->current_trick][best_player]);
+            int cmp = truco_card_internal_compare(game->trick_cards[game->current_trick][player],
+                                         game->trick_cards[game->current_trick][best_player]);
             if (cmp > 0) {
                 best_player = (int)player;
                 best_team = (int)team_for(game, player);
@@ -190,20 +188,20 @@ static void resolve_current_trick(truco_game *game)
     }
 
     if (tied_across_teams) {
-        G(game)->trick_winner_team[G(game)->current_trick] = -1;
-        G(game)->trick_winner_player[G(game)->current_trick] = (int)G(game)->trick_leader;
+        game->trick_winner_team[game->current_trick] = -1;
+        game->trick_winner_player[game->current_trick] = (int)game->trick_leader;
     } else {
-        G(game)->trick_winner_team[G(game)->current_trick] = best_team;
-        G(game)->trick_winner_player[G(game)->current_trick] = best_player;
+        game->trick_winner_team[game->current_trick] = best_team;
+        game->trick_winner_player[game->current_trick] = best_player;
     }
 }
 
 static void finish_hand(truco_game *game, unsigned int winner_team)
 {
-    G(game)->last_hand_winner = (int)winner_team;
-    add_score(game, winner_team, G(game)->truco_value);
-    if (G(game)->phase != TRUCO_PHASE_GAME_OVER) {
-        G(game)->phase = TRUCO_PHASE_HAND_OVER;
+    game->last_hand_winner = (int)winner_team;
+    add_score(game, winner_team, game->truco_value);
+    if (game->phase != TRUCO_PHASE_GAME_OVER) {
+        game->phase = TRUCO_PHASE_HAND_OVER;
     }
 }
 
@@ -214,18 +212,18 @@ static int is_valid_bid(envido_bid bid)
 
 static int is_valid_player(const truco_game *game, unsigned int player)
 {
-    return game != 0 && player < G(game)->config.player_count;
+    return game != 0 && player < game->settings.player_count;
 }
 
 static int can_start_hand(const truco_game *game)
 {
     return game != 0 &&
-           (G(game)->phase == TRUCO_PHASE_READY || G(game)->phase == TRUCO_PHASE_HAND_OVER);
+           (game->phase == TRUCO_PHASE_READY || game->phase == TRUCO_PHASE_HAND_OVER);
 }
 
 static unsigned int next_truco_value(const truco_game *game)
 {
-    unsigned int value = G(game)->truco_value + 1u;
+    unsigned int value = game->truco_value + 1u;
     return value < 2u ? 2u : value;
 }
 
@@ -235,11 +233,11 @@ static int can_play_card(const truco_game *game,
 {
     return is_valid_player(game, player) &&
            card_index < TRUCO_HAND_CARDS &&
-           G(game)->phase == TRUCO_PHASE_PLAYING &&
-           G(game)->pending_truco_value == 0u &&
-           G(game)->envido_pending_team < 0 &&
-           player == G(game)->current_player &&
-           !G(game)->played_slots[player][card_index];
+           game->phase == TRUCO_PHASE_PLAYING &&
+           game->pending_truco_value == 0u &&
+           game->envido_pending_team < 0 &&
+           player == game->current_player &&
+           !game->played_slots[player][card_index];
 }
 
 static int can_raise_truco(const truco_game *game, unsigned int player)
@@ -247,15 +245,15 @@ static int can_raise_truco(const truco_game *game, unsigned int player)
     unsigned int player_team;
 
     if (!is_valid_player(game, player) ||
-        G(game)->phase != TRUCO_PHASE_PLAYING ||
-        G(game)->pending_truco_value != 0u ||
-        G(game)->envido_pending_team >= 0 ||
-        G(game)->truco_value >= 4u) {
+        game->phase != TRUCO_PHASE_PLAYING ||
+        game->pending_truco_value != 0u ||
+        game->envido_pending_team >= 0 ||
+        game->truco_value >= 4u) {
         return 0;
     }
 
     player_team = team_for(game, player);
-    return G(game)->last_truco_team != (int)player_team;
+    return game->last_truco_team != (int)player_team;
 }
 
 static int can_answer_truco(const truco_game *game, unsigned int player)
@@ -263,13 +261,13 @@ static int can_answer_truco(const truco_game *game, unsigned int player)
     unsigned int player_team;
 
     if (!is_valid_player(game, player) ||
-        G(game)->phase != TRUCO_PHASE_PLAYING ||
-        G(game)->pending_truco_value == 0u) {
+        game->phase != TRUCO_PHASE_PLAYING ||
+        game->pending_truco_value == 0u) {
         return 0;
     }
 
     player_team = team_for(game, player);
-    return G(game)->pending_truco_team != (int)player_team;
+    return game->pending_truco_team != (int)player_team;
 }
 
 static int can_call_envido(const truco_game *game,
@@ -278,10 +276,10 @@ static int can_call_envido(const truco_game *game,
 {
     return is_valid_player(game, player) &&
            is_valid_bid(bid) &&
-           G(game)->phase == TRUCO_PHASE_PLAYING &&
-           G(game)->pending_truco_value == 0u &&
-           !G(game)->envido_resolved &&
-           G(game)->envido_pending_team < 0 &&
+           game->phase == TRUCO_PHASE_PLAYING &&
+           game->pending_truco_value == 0u &&
+           !game->envido_resolved &&
+           game->envido_pending_team < 0 &&
            !has_any_card_been_played(game);
 }
 
@@ -290,66 +288,69 @@ static int can_answer_envido(const truco_game *game, unsigned int player)
     unsigned int player_team;
 
     if (!is_valid_player(game, player) ||
-        G(game)->phase != TRUCO_PHASE_PLAYING ||
-        G(game)->envido_pending_team < 0) {
+        game->phase != TRUCO_PHASE_PLAYING ||
+        game->envido_pending_team < 0) {
         return 0;
     }
 
     player_team = team_for(game, player);
-    return G(game)->envido_pending_team != (int)player_team;
+    return game->envido_pending_team != (int)player_team;
 }
 
-void truco_config_default(truco_config *config, unsigned int player_count)
+
+static void apply_player_count_defaults(truco_game *game, unsigned int player_count)
 {
     unsigned int player;
 
-    if (config == 0) {
-        return;
-    }
-
-    memset(config, 0, sizeof(*config));
-    C(config)->player_count = player_count;
-    C(config)->target_score = 30u;
-    C(config)->seed = 1u;
-    C(config)->initial_dealer = player_count == 0u ? 0u : player_count - 1u;
+    game->settings.player_count = player_count;
+    game->settings.target_score = 30u;
+    game->settings.seed = 1u;
+    game->settings.initial_dealer = player_count == 0u ? 0u : player_count - 1u;
 
     for (player = 0u; player < TRUCO_MAX_PLAYERS; ++player) {
-        C(config)->team_for_player[player] = (unsigned char)(player % TRUCO_MAX_TEAMS);
+        game->settings.team_for_player[player] = (unsigned char)(player % TRUCO_MAX_TEAMS);
     }
 }
 
-truco_status truco_game_init(truco_game *game, const truco_config *config)
+static truco_status init_game_state(truco_game *game)
 {
-    truco_config local_config;
     unsigned int player;
 
     if (game == 0) {
         return TRUCO_ERR_INVALID_ARGUMENT;
     }
 
-    if (config == 0) {
-        truco_config_default(&local_config, 2u);
-        config = &local_config;
-    }
-
-    if (C(config)->player_count > TRUCO_MAX_PLAYERS || C(config)->player_count < 2u) {
+    if (game->settings.player_count == 0u ||
+        game->settings.player_count > TRUCO_MAX_PLAYERS ||
+        game->settings.player_count < 2u) {
         return TRUCO_ERR_INVALID_ARGUMENT;
     }
 
-    if (!is_supported_player_count(C(config)->player_count)) {
+    if (!is_supported_player_count(game->settings.player_count)) {
         return TRUCO_ERR_UNSUPPORTED_RULES;
     }
 
-    memset(game, 0, sizeof(*game));
-    G(game)->config = *C(config);
-    G(game)->config.target_score = default_target_score(C(config)->target_score);
-    G(game)->rng_state = C(config)->seed == 0u ? 1u : C(config)->seed;
-    G(game)->dealer = C(config)->initial_dealer % C(config)->player_count;
-    G(game)->phase = TRUCO_PHASE_READY;
-    G(game)->last_hand_winner = -1;
+    game->settings.target_score = default_target_score(game->settings.target_score);
+    game->rng_state = game->settings.seed == 0u ? 1u : game->settings.seed;
+    game->dealer = game->settings.initial_dealer % game->settings.player_count;
+    game->phase = TRUCO_PHASE_READY;
+    game->last_hand_winner = -1;
+    game->mano = 0u;
+    game->current_player = 0u;
+    game->trick_leader = 0u;
+    game->current_trick = 0u;
+    game->truco_value = 1u;
+    game->pending_truco_value = 0u;
+    game->pending_truco_team = -1;
+    game->last_truco_team = -1;
+    game->envido_pending_team = -1;
+    game->envido_pending_points = 0u;
+    game->envido_resolved = 0;
+    game->score[0] = 0u;
+    game->score[1] = 0u;
 
-    for (player = 0u; player < C(config)->player_count; ++player) {
-        if (G(game)->config.team_for_player[player] >= TRUCO_MAX_TEAMS) {
+    for (player = 0u; player < game->settings.player_count; ++player) {
+        if (game->settings.team_for_player[player] >= TRUCO_MAX_TEAMS) {
             return TRUCO_ERR_INVALID_ARGUMENT;
         }
     }
@@ -357,69 +358,159 @@ truco_status truco_game_init(truco_game *game, const truco_config *config)
     return TRUCO_OK;
 }
 
-static truco_status start_hand(truco_game *game)
+static truco_status truco_deck(truco_card_internal *cards, size_t count)
 {
-    truco_card deck[TRUCO_DECK_SIZE];
-    unsigned int player;
-    unsigned int slot;
-    unsigned int index = 0u;
+    unsigned int suit;
+    unsigned int rank;
+    size_t index = 0u;
 
-    if (game == 0) {
+    if (cards == 0 || count < TRUCO_DECK_SIZE) {
         return TRUCO_ERR_INVALID_ARGUMENT;
     }
 
-    if (!can_start_hand(game)) {
-        return TRUCO_ERR_INVALID_STATE;
-    }
-
-    if (truco_deck(deck, TRUCO_DECK_SIZE) != TRUCO_OK) {
-        return TRUCO_ERR_INVALID_STATE;
-    }
-
-    truco_shuffle(deck, TRUCO_DECK_SIZE, &G(game)->rng_state);
-
-    memset(G(game)->played_slots, 0, sizeof(G(game)->played_slots));
-    memset(G(game)->trick_played, 0, sizeof(G(game)->trick_played));
-    for (slot = 0u; slot < TRUCO_HAND_CARDS; ++slot) {
-        G(game)->trick_winner_team[slot] = -2;
-        G(game)->trick_winner_player[slot] = -1;
-    }
-
-    for (slot = 0u; slot < TRUCO_HAND_CARDS; ++slot) {
-        for (player = 0u; player < G(game)->config.player_count; ++player) {
-            G(game)->hands[player][slot] = deck[index++];
+    for (suit = 0u; suit < 4u; ++suit) {
+        for (rank = 1u; rank <= 12u; ++rank) {
+            if (rank == 8u || rank == 9u) {
+                continue;
+            }
+            cards[index++] = truco_card_internal_make((truco_suit)suit, rank);
         }
     }
-
-    G(game)->mano = (G(game)->dealer + 1u) % G(game)->config.player_count;
-    G(game)->current_player = G(game)->mano;
-    G(game)->trick_leader = G(game)->mano;
-    G(game)->current_trick = 0u;
-    G(game)->truco_value = 1u;
-    G(game)->pending_truco_value = 0u;
-    G(game)->pending_truco_team = -1;
-    G(game)->last_truco_team = -1;
-    G(game)->envido_pending_team = -1;
-    G(game)->envido_pending_points = 0u;
-    G(game)->envido_resolved = 0;
-    G(game)->last_hand_winner = -1;
-    G(game)->phase = TRUCO_PHASE_PLAYING;
-    G(game)->dealer = (G(game)->dealer + 1u) % G(game)->config.player_count;
 
     return TRUCO_OK;
 }
 
-truco_card truco_make_card(truco_suit suit, unsigned int rank)
+static truco_status truco_shuffle(truco_card_internal *cards, size_t count, unsigned int *seed)
 {
-    truco_card card;
+    size_t i;
 
-    card.suit = (unsigned char)suit;
-    card.rank = (unsigned char)rank;
-    return card;
+    if (cards == 0 || seed == 0) {
+        return TRUCO_ERR_INVALID_ARGUMENT;
+    }
+
+    if (count < 2u) {
+        return TRUCO_OK;
+    }
+
+    for (i = count - 1u; i > 0u; --i) {
+        size_t j = (size_t)(next_random(seed) % (unsigned int)(i + 1u));
+        truco_card_internal tmp = cards[i];
+        cards[i] = cards[j];
+        cards[j] = tmp;
+    }
+
+    return TRUCO_OK;
 }
 
-int truco_card_is_valid(truco_card card)
+static unsigned int envido_points_from_cards(const truco_card_internal cards[TRUCO_HAND_CARDS])
 {
+    unsigned int best = 0u;
+    unsigned int i;
+    unsigned int j;
+
+    for (i = 0u; i < TRUCO_HAND_CARDS; ++i) {
+        unsigned int value = card_face_value(cards[i]);
+        if (value > best) {
+            best = value;
+        }
+    }
+
+    for (i = 0u; i < TRUCO_HAND_CARDS; ++i) {
+        for (j = i + 1u; j < TRUCO_HAND_CARDS; ++j) {
+            if (cards[i].suit == cards[j].suit) {
+                unsigned int pair_value = 20u + card_face_value(cards[i]) + card_face_value(cards[j]);
+                if (pair_value > best) {
+                    best = pair_value;
+                }
+            }
+        }
+    }
+
+    return best;
+}
+
+truco_game *truco_game_create(void)
+{
+    truco_game *game = (truco_game *)malloc(sizeof(*game));
+    if (game == 0) {
+        return 0;
+    }
+
+    memset(game, 0, sizeof(*game));
+    return game;
+}
+
+void truco_game_destroy(truco_game *game)
+{
+    free(game);
+}
+
+size_t truco_game_size(void)
+{
+    return sizeof(truco_game);
+}
+
+truco_status truco_game_set_player_count(truco_game *game, unsigned int player_count)
+{
+    if (game == 0 || player_count == 0u || player_count > TRUCO_MAX_PLAYERS) {
+        return TRUCO_ERR_INVALID_ARGUMENT;
+    }
+
+    apply_player_count_defaults(game, player_count);
+    return TRUCO_OK;
+}
+
+truco_status truco_game_set_seed(truco_game *game, unsigned int seed)
+{
+    if (game == 0) {
+        return TRUCO_ERR_INVALID_ARGUMENT;
+    }
+
+    game->settings.seed = seed;
+    return TRUCO_OK;
+}
+
+truco_status truco_game_set_initial_dealer(truco_game *game, unsigned int initial_dealer)
+{
+    if (game == 0) {
+        return TRUCO_ERR_INVALID_ARGUMENT;
+    }
+
+    game->settings.initial_dealer = initial_dealer;
+    return TRUCO_OK;
+}
+
+truco_status truco_game_set_target_score(truco_game *game, unsigned int target_score)
+{
+    if (game == 0) {
+        return TRUCO_ERR_INVALID_ARGUMENT;
+    }
+
+    game->settings.target_score = target_score;
+    return TRUCO_OK;
+}
+
+truco_status truco_game_set_team_for_player(truco_game *game,
+                                            unsigned int player,
+                                            unsigned int team)
+{
+    if (game == 0 || player >= TRUCO_MAX_PLAYERS || team >= TRUCO_MAX_TEAMS) {
+        return TRUCO_ERR_INVALID_ARGUMENT;
+    }
+
+    game->settings.team_for_player[player] = (unsigned char)team;
+    return TRUCO_OK;
+}
+
+truco_status truco_game_init(truco_game *game)
+{
+    return init_game_state(game);
+}
+
+int truco_card_is_valid(truco_suit suit, unsigned int rank)
+{
+    truco_card_internal card = truco_card_internal_make(suit, rank);
+
     if (card.suit > TRUCO_SUIT_COPA) {
         return 0;
     }
@@ -431,9 +522,11 @@ int truco_card_is_valid(truco_card card)
     return card.rank >= 10u && card.rank <= 12u;
 }
 
-int truco_card_power(truco_card card)
+int truco_card_power(truco_suit suit, unsigned int rank)
 {
-    if (!truco_card_is_valid(card)) {
+    truco_card_internal card = truco_card_internal_make(suit, rank);
+
+    if (!truco_card_is_valid(suit, rank)) {
         return -1;
     }
 
@@ -479,10 +572,13 @@ int truco_card_power(truco_card card)
     return 1;
 }
 
-int truco_card_compare(truco_card left, truco_card right)
+int truco_card_compare(truco_suit left_suit,
+                       unsigned int left_rank,
+                       truco_suit right_suit,
+                       unsigned int right_rank)
 {
-    int left_power = truco_card_power(left);
-    int right_power = truco_card_power(right);
+    int left_power = truco_card_power(left_suit, left_rank);
+    int right_power = truco_card_power(right_suit, right_rank);
 
     if (left_power > right_power) {
         return 1;
@@ -493,77 +589,71 @@ int truco_card_compare(truco_card left, truco_card right)
     return 0;
 }
 
-unsigned int truco_envido_points(const truco_card cards[TRUCO_HAND_CARDS])
+unsigned int truco_envido_points(const truco_suit suits[TRUCO_HAND_CARDS],
+                                 const unsigned int ranks[TRUCO_HAND_CARDS])
 {
-    unsigned int best = 0u;
-    unsigned int i;
-    unsigned int j;
+    truco_card_internal cards[TRUCO_HAND_CARDS];
+    unsigned int slot;
 
-    if (cards == 0) {
+    if (suits == 0 || ranks == 0) {
         return 0u;
     }
 
-    for (i = 0u; i < TRUCO_HAND_CARDS; ++i) {
-        unsigned int value = card_face_value(cards[i]);
-        if (value > best) {
-            best = value;
-        }
+    for (slot = 0u; slot < TRUCO_HAND_CARDS; ++slot) {
+        cards[slot] = truco_card_internal_make(suits[slot], ranks[slot]);
     }
 
-    for (i = 0u; i < TRUCO_HAND_CARDS; ++i) {
-        for (j = i + 1u; j < TRUCO_HAND_CARDS; ++j) {
-            if (cards[i].suit == cards[j].suit) {
-                unsigned int pair_value = 20u + card_face_value(cards[i]) + card_face_value(cards[j]);
-                if (pair_value > best) {
-                    best = pair_value;
-                }
-            }
-        }
-    }
-
-    return best;
+    return envido_points_from_cards(cards);
 }
 
-truco_status truco_deck(truco_card *cards, size_t count)
+static truco_status start_hand(truco_game *game)
 {
-    unsigned int suit;
-    unsigned int rank;
-    size_t index = 0u;
+    truco_card_internal deck[TRUCO_DECK_SIZE];
+    unsigned int player;
+    unsigned int slot;
+    unsigned int index = 0u;
 
-    if (cards == 0 || count < TRUCO_DECK_SIZE) {
+    if (game == 0) {
         return TRUCO_ERR_INVALID_ARGUMENT;
     }
 
-    for (suit = 0u; suit < 4u; ++suit) {
-        for (rank = 1u; rank <= 12u; ++rank) {
-            if (rank == 8u || rank == 9u) {
-                continue;
-            }
-            cards[index++] = truco_make_card((truco_suit)suit, rank);
+    if (!can_start_hand(game)) {
+        return TRUCO_ERR_INVALID_STATE;
+    }
+
+    if (truco_deck(deck, TRUCO_DECK_SIZE) != TRUCO_OK) {
+        return TRUCO_ERR_INVALID_STATE;
+    }
+
+    truco_shuffle(deck, TRUCO_DECK_SIZE, &game->rng_state);
+
+    memset(game->played_slots, 0, sizeof(game->played_slots));
+    memset(game->trick_played, 0, sizeof(game->trick_played));
+    for (slot = 0u; slot < TRUCO_HAND_CARDS; ++slot) {
+        game->trick_winner_team[slot] = -2;
+        game->trick_winner_player[slot] = -1;
+    }
+
+    for (slot = 0u; slot < TRUCO_HAND_CARDS; ++slot) {
+        for (player = 0u; player < game->settings.player_count; ++player) {
+            game->hands[player][slot] = deck[index++];
         }
     }
 
-    return TRUCO_OK;
-}
-
-truco_status truco_shuffle(truco_card *cards, size_t count, unsigned int *seed)
-{
-    size_t i;
-
-    if (cards == 0 || seed == 0) {
-        return TRUCO_ERR_INVALID_ARGUMENT;
-    }
-
-    if (count < 2u) {
-        return TRUCO_OK;
-    }
-
-    for (i = count - 1u; i > 0u; --i) {
-        size_t j = (size_t)(next_random(seed) % (unsigned int)(i + 1u));
-        truco_card tmp = cards[i];
-        cards[i] = cards[j];
-        cards[j] = tmp;
-    }
+    game->mano = (game->dealer + 1u) % game->settings.player_count;
+    game->current_player = game->mano;
+    game->trick_leader = game->mano;
+    game->current_trick = 0u;
+    game->truco_value = 1u;
+    game->pending_truco_value = 0u;
+    game->pending_truco_team = -1;
+    game->last_truco_team = -1;
+    game->envido_pending_team = -1;
+    game->envido_pending_points = 0u;
+    game->envido_resolved = 0;
+    game->last_hand_winner = -1;
+    game->phase = TRUCO_PHASE_PLAYING;
+    game->dealer = (game->dealer + 1u) % game->settings.player_count;
 
     return TRUCO_OK;
 }
@@ -574,31 +664,31 @@ static truco_status play_card(truco_game *game,
 {
     int hand_winner;
 
-    if (game == 0 || player >= G(game)->config.player_count || card_index >= TRUCO_HAND_CARDS) {
+    if (game == 0 || player >= game->settings.player_count || card_index >= TRUCO_HAND_CARDS) {
         return TRUCO_ERR_INVALID_ARGUMENT;
     }
 
-    if (G(game)->phase != TRUCO_PHASE_PLAYING ||
-        G(game)->pending_truco_value != 0u ||
-        G(game)->envido_pending_team >= 0) {
+    if (game->phase != TRUCO_PHASE_PLAYING ||
+        game->pending_truco_value != 0u ||
+        game->envido_pending_team >= 0) {
         return TRUCO_ERR_INVALID_STATE;
     }
 
-    if (player != G(game)->current_player) {
+    if (player != game->current_player) {
         return TRUCO_ERR_NOT_PLAYERS_TURN;
     }
 
-    if (G(game)->played_slots[player][card_index]) {
+    if (game->played_slots[player][card_index]) {
         return TRUCO_ERR_CARD_ALREADY_PLAYED;
     }
 
-    G(game)->played_slots[player][card_index] = 1u;
-    G(game)->trick_cards[G(game)->current_trick][player] = G(game)->hands[player][card_index];
-    G(game)->trick_played[G(game)->current_trick][player] = 1u;
+    game->played_slots[player][card_index] = 1u;
+    game->trick_cards[game->current_trick][player] = game->hands[player][card_index];
+    game->trick_played[game->current_trick][player] = 1u;
 
-    G(game)->current_player = (G(game)->current_player + 1u) % G(game)->config.player_count;
+    game->current_player = (game->current_player + 1u) % game->settings.player_count;
 
-    if (G(game)->current_player != G(game)->trick_leader) {
+    if (game->current_player != game->trick_leader) {
         return TRUCO_OK;
     }
 
@@ -609,18 +699,18 @@ static truco_status play_card(truco_game *game,
         return TRUCO_OK;
     }
 
-    if (G(game)->current_trick + 1u >= TRUCO_HAND_CARDS) {
-        finish_hand(game, team_for(game, G(game)->mano));
+    if (game->current_trick + 1u >= TRUCO_HAND_CARDS) {
+        finish_hand(game, team_for(game, game->mano));
         return TRUCO_OK;
     }
 
-    if (G(game)->trick_winner_player[G(game)->current_trick] >= 0 &&
-        G(game)->trick_winner_team[G(game)->current_trick] != -1) {
-        G(game)->trick_leader = (unsigned int)G(game)->trick_winner_player[G(game)->current_trick];
+    if (game->trick_winner_player[game->current_trick] >= 0 &&
+        game->trick_winner_team[game->current_trick] != -1) {
+        game->trick_leader = (unsigned int)game->trick_winner_player[game->current_trick];
     }
 
-    G(game)->current_player = G(game)->trick_leader;
-    G(game)->current_trick++;
+    game->current_player = game->trick_leader;
+    game->current_trick++;
 
     return TRUCO_OK;
 }
@@ -629,7 +719,7 @@ static truco_status raise_truco(truco_game *game, unsigned int player)
 {
     unsigned int player_team;
 
-    if (game == 0 || player >= G(game)->config.player_count) {
+    if (game == 0 || player >= game->settings.player_count) {
         return TRUCO_ERR_INVALID_ARGUMENT;
     }
 
@@ -638,15 +728,15 @@ static truco_status raise_truco(truco_game *game, unsigned int player)
     }
 
     player_team = team_for(game, player);
-    G(game)->pending_truco_team = (int)player_team;
-    G(game)->pending_truco_value = next_truco_value(game);
+    game->pending_truco_team = (int)player_team;
+    game->pending_truco_value = next_truco_value(game);
 
     return TRUCO_OK;
 }
 
 static truco_status accept_truco(truco_game *game, unsigned int player)
 {
-    if (game == 0 || player >= G(game)->config.player_count) {
+    if (game == 0 || player >= game->settings.player_count) {
         return TRUCO_ERR_INVALID_ARGUMENT;
     }
 
@@ -654,10 +744,10 @@ static truco_status accept_truco(truco_game *game, unsigned int player)
         return TRUCO_ERR_INVALID_STATE;
     }
 
-    G(game)->truco_value = G(game)->pending_truco_value;
-    G(game)->last_truco_team = G(game)->pending_truco_team;
-    G(game)->pending_truco_value = 0u;
-    G(game)->pending_truco_team = -1;
+    game->truco_value = game->pending_truco_value;
+    game->last_truco_team = game->pending_truco_team;
+    game->pending_truco_value = 0u;
+    game->pending_truco_team = -1;
 
     return TRUCO_OK;
 }
@@ -666,7 +756,7 @@ static truco_status decline_truco(truco_game *game, unsigned int player)
 {
     unsigned int winner_team;
 
-    if (game == 0 || player >= G(game)->config.player_count) {
+    if (game == 0 || player >= game->settings.player_count) {
         return TRUCO_ERR_INVALID_ARGUMENT;
     }
 
@@ -674,9 +764,9 @@ static truco_status decline_truco(truco_game *game, unsigned int player)
         return TRUCO_ERR_INVALID_STATE;
     }
 
-    winner_team = (unsigned int)G(game)->pending_truco_team;
-    G(game)->pending_truco_value = 0u;
-    G(game)->pending_truco_team = -1;
+    winner_team = (unsigned int)game->pending_truco_team;
+    game->pending_truco_value = 0u;
+    game->pending_truco_team = -1;
     finish_hand(game, winner_team);
 
     return TRUCO_OK;
@@ -689,7 +779,7 @@ static truco_status call_envido(truco_game *game,
     unsigned int player_team;
     unsigned int points;
 
-    if (game == 0 || player >= G(game)->config.player_count || !is_valid_bid(bid)) {
+    if (game == 0 || player >= game->settings.player_count || !is_valid_bid(bid)) {
         return TRUCO_ERR_INVALID_ARGUMENT;
     }
 
@@ -700,8 +790,8 @@ static truco_status call_envido(truco_game *game,
     player_team = team_for(game, player);
     points = bid == FALTA_ENVIDO ? falta_envido_points(game, player_team) : (unsigned int)bid;
 
-    G(game)->envido_pending_team = (int)player_team;
-    G(game)->envido_pending_points = points;
+    game->envido_pending_team = (int)player_team;
+    game->envido_pending_points = points;
 
     return TRUCO_OK;
 }
@@ -714,7 +804,7 @@ static truco_status accept_envido(truco_game *game, unsigned int player)
     unsigned int player_index;
     unsigned int winner_team = 0u;
 
-    if (game == 0 || player >= G(game)->config.player_count) {
+    if (game == 0 || player >= game->settings.player_count) {
         return TRUCO_ERR_INVALID_ARGUMENT;
     }
 
@@ -722,9 +812,9 @@ static truco_status accept_envido(truco_game *game, unsigned int player)
         return TRUCO_ERR_INVALID_STATE;
     }
 
-    for (player_index = 0u; player_index < G(game)->config.player_count; ++player_index) {
+    for (player_index = 0u; player_index < game->settings.player_count; ++player_index) {
         unsigned int team = team_for(game, player_index);
-        unsigned int points = truco_envido_points(G(game)->hands[player_index]);
+        unsigned int points = envido_points_from_cards(game->hands[player_index]);
         if (!seen_team[team] ||
             points > best_points[team] ||
             (points == best_points[team] &&
@@ -742,10 +832,10 @@ static truco_status accept_envido(truco_game *game, unsigned int player)
         winner_team = 1u;
     }
 
-    add_score(game, winner_team, G(game)->envido_pending_points);
-    G(game)->envido_pending_team = -1;
-    G(game)->envido_pending_points = 0u;
-    G(game)->envido_resolved = 1;
+    add_score(game, winner_team, game->envido_pending_points);
+    game->envido_pending_team = -1;
+    game->envido_pending_points = 0u;
+    game->envido_resolved = 1;
 
     return TRUCO_OK;
 }
@@ -754,7 +844,7 @@ static truco_status decline_envido(truco_game *game, unsigned int player)
 {
     unsigned int winner_team;
 
-    if (game == 0 || player >= G(game)->config.player_count) {
+    if (game == 0 || player >= game->settings.player_count) {
         return TRUCO_ERR_INVALID_ARGUMENT;
     }
 
@@ -762,14 +852,15 @@ static truco_status decline_envido(truco_game *game, unsigned int player)
         return TRUCO_ERR_INVALID_STATE;
     }
 
-    winner_team = (unsigned int)G(game)->envido_pending_team;
+    winner_team = (unsigned int)game->envido_pending_team;
     add_score(game, winner_team, 1u);
-    G(game)->envido_pending_team = -1;
-    G(game)->envido_pending_points = 0u;
-    G(game)->envido_resolved = 1;
+    game->envido_pending_team = -1;
+    game->envido_pending_points = 0u;
+    game->envido_resolved = 1;
 
     return TRUCO_OK;
 }
+
 
 truco_status truco_game_apply(truco_game *game,
                               unsigned int player,
@@ -818,66 +909,91 @@ truco_status truco_game_apply(truco_game *game,
     }
 }
 
-static void add_legal_command(truco_legal_actions *actions,
+static void add_legal_command(truco_command *commands,
+                              unsigned int max_commands,
+                              unsigned int *count,
                               truco_command command)
 {
-    if (actions->count < TRUCO_MAX_LEGAL_COMMANDS) {
-        actions->commands[actions->count++] = command;
+    if (*count < max_commands) {
+        commands[(*count)++] = command;
     }
 }
 
 truco_status truco_game_legal_actions(const truco_game *game,
                                       unsigned int player,
-                                      truco_legal_actions *actions)
+                                      truco_command *commands,
+                                      unsigned int max_commands,
+                                      unsigned int *count_out,
+                                      unsigned int *truco_value_out,
+                                      unsigned int *envido_points_out)
 {
     unsigned int slot;
+    unsigned int count = 0u;
+    unsigned int truco_value = 0u;
+    unsigned int envido_points = 0u;
 
-    if (actions == 0 || !is_valid_player(game, player)) {
+    if (commands == 0 || count_out == 0 || !is_valid_player(game, player)) {
         return TRUCO_ERR_INVALID_ARGUMENT;
     }
 
-    memset(actions, 0, sizeof(*actions));
+    if (truco_value_out != 0) {
+        *truco_value_out = 0u;
+    }
+    if (envido_points_out != 0) {
+        *envido_points_out = 0u;
+    }
 
     if (can_start_hand(game)) {
-        add_legal_command(actions, TRUCO_CMD_START_HAND);
+        add_legal_command(commands, max_commands, &count, TRUCO_CMD_START_HAND);
+        *count_out = count;
         return TRUCO_OK;
     }
 
-    if (G(game)->phase != TRUCO_PHASE_PLAYING) {
+    if (game->phase != TRUCO_PHASE_PLAYING) {
+        *count_out = 0u;
         return TRUCO_OK;
     }
 
     for (slot = 0u; slot < TRUCO_HAND_CARDS; ++slot) {
         if (can_play_card(game, player, slot)) {
-            add_legal_command(actions, (truco_command)(TRUCO_CMD_PLAY_CARD_0 + slot));
+            add_legal_command(commands, max_commands, &count,
+                              (truco_command)(TRUCO_CMD_PLAY_CARD_0 + slot));
         }
     }
 
     if (can_raise_truco(game, player)) {
-        add_legal_command(actions, TRUCO_CMD_RAISE_TRUCO);
-        actions->truco_value = next_truco_value(game);
+        add_legal_command(commands, max_commands, &count, TRUCO_CMD_RAISE_TRUCO);
+        truco_value = next_truco_value(game);
     }
 
     if (can_answer_truco(game, player)) {
-        add_legal_command(actions, TRUCO_CMD_ACCEPT_BID);
-        add_legal_command(actions, TRUCO_CMD_REJECT_BID);
-        actions->truco_value = G(game)->pending_truco_value;
+        add_legal_command(commands, max_commands, &count, TRUCO_CMD_ACCEPT_BID);
+        add_legal_command(commands, max_commands, &count, TRUCO_CMD_REJECT_BID);
+        truco_value = game->pending_truco_value;
     }
 
     if (can_call_envido(game, player, ENVIDO)) {
-        add_legal_command(actions, TRUCO_CMD_CALL_ENVIDO);
+        add_legal_command(commands, max_commands, &count, TRUCO_CMD_CALL_ENVIDO);
     }
     if (can_call_envido(game, player, REAL_ENVIDO)) {
-        add_legal_command(actions, TRUCO_CMD_CALL_REAL_ENVIDO);
+        add_legal_command(commands, max_commands, &count, TRUCO_CMD_CALL_REAL_ENVIDO);
     }
     if (can_call_envido(game, player, FALTA_ENVIDO)) {
-        add_legal_command(actions, TRUCO_CMD_CALL_FALTA_ENVIDO);
+        add_legal_command(commands, max_commands, &count, TRUCO_CMD_CALL_FALTA_ENVIDO);
     }
 
     if (can_answer_envido(game, player)) {
-        add_legal_command(actions, TRUCO_CMD_ACCEPT_BID);
-        add_legal_command(actions, TRUCO_CMD_REJECT_BID);
-        actions->envido_points = G(game)->envido_pending_points;
+        add_legal_command(commands, max_commands, &count, TRUCO_CMD_ACCEPT_BID);
+        add_legal_command(commands, max_commands, &count, TRUCO_CMD_REJECT_BID);
+        envido_points = game->envido_pending_points;
+    }
+
+    *count_out = count;
+    if (truco_value_out != 0) {
+        *truco_value_out = truco_value;
+    }
+    if (envido_points_out != 0) {
+        *envido_points_out = envido_points;
     }
 
     return TRUCO_OK;
@@ -888,13 +1004,13 @@ unsigned int truco_game_player_count(const truco_game *game)
     if (game == 0) {
         return 0u;
     }
-    return G(game)->config.player_count;
+    return game->settings.player_count;
 }
 
 unsigned int truco_game_team_for_player(const truco_game *game,
                                         unsigned int player)
 {
-    if (game == 0 || player >= G(game)->config.player_count) {
+    if (game == 0 || player >= game->settings.player_count) {
         return TRUCO_MAX_TEAMS;
     }
     return team_for(game, player);
@@ -905,7 +1021,7 @@ truco_phase truco_game_phase(const truco_game *game)
     if (game == 0) {
         return TRUCO_PHASE_READY;
     }
-    return (truco_phase)G(game)->phase;
+    return (truco_phase)game->phase;
 }
 
 unsigned int truco_game_current_player(const truco_game *game)
@@ -913,86 +1029,7 @@ unsigned int truco_game_current_player(const truco_game *game)
     if (game == 0) {
         return 0u;
     }
-    return G(game)->current_player;
-}
-
-unsigned int truco_game_score(const truco_game *game, unsigned int team)
-{
-    if (game == 0 || team >= TRUCO_MAX_TEAMS) {
-        return 0u;
-    }
-    return G(game)->score[team];
-}
-
-int truco_game_hand_winner(const truco_game *game)
-{
-    if (game == 0 ||
-        (G(game)->phase != TRUCO_PHASE_HAND_OVER && G(game)->phase != TRUCO_PHASE_GAME_OVER)) {
-        return -1;
-    }
-
-    return G(game)->last_hand_winner;
-}
-
-int truco_game_trick_winner(const truco_game *game, unsigned int trick)
-{
-    if (game == 0 || trick >= TRUCO_HAND_CARDS) {
-        return -2;
-    }
-    return G(game)->trick_winner_team[trick];
-}
-
-truco_status truco_config_set_seed(truco_config *config, unsigned int seed)
-{
-    if (config == 0) {
-        return TRUCO_ERR_INVALID_ARGUMENT;
-    }
-
-    C(config)->seed = seed;
-    return TRUCO_OK;
-}
-
-truco_status truco_config_set_initial_dealer(truco_config *config,
-                                             unsigned int initial_dealer)
-{
-    if (config == 0) {
-        return TRUCO_ERR_INVALID_ARGUMENT;
-    }
-
-    C(config)->initial_dealer = initial_dealer;
-    return TRUCO_OK;
-}
-
-truco_status truco_config_set_target_score(truco_config *config,
-                                           unsigned int target_score)
-{
-    if (config == 0) {
-        return TRUCO_ERR_INVALID_ARGUMENT;
-    }
-
-    C(config)->target_score = target_score;
-    return TRUCO_OK;
-}
-
-truco_status truco_config_set_team_for_player(truco_config *config,
-                                              unsigned int player,
-                                              unsigned int team)
-{
-    if (config == 0 || player >= TRUCO_MAX_PLAYERS || team >= TRUCO_MAX_TEAMS) {
-        return TRUCO_ERR_INVALID_ARGUMENT;
-    }
-
-    C(config)->team_for_player[player] = (unsigned char)team;
-    return TRUCO_OK;
-}
-
-unsigned int truco_config_player_count(const truco_config *config)
-{
-    if (config == 0) {
-        return 0u;
-    }
-
-    return C(config)->player_count;
+    return game->current_player;
 }
 
 unsigned int truco_game_dealer(const truco_game *game)
@@ -1000,8 +1037,7 @@ unsigned int truco_game_dealer(const truco_game *game)
     if (game == 0) {
         return 0u;
     }
-
-    return G(game)->dealer;
+    return game->dealer;
 }
 
 unsigned int truco_game_mano(const truco_game *game)
@@ -1009,8 +1045,7 @@ unsigned int truco_game_mano(const truco_game *game)
     if (game == 0) {
         return 0u;
     }
-
-    return G(game)->mano;
+    return game->mano;
 }
 
 unsigned int truco_game_target_score(const truco_game *game)
@@ -1018,8 +1053,7 @@ unsigned int truco_game_target_score(const truco_game *game)
     if (game == 0) {
         return 0u;
     }
-
-    return G(game)->config.target_score;
+    return game->settings.target_score;
 }
 
 unsigned int truco_game_truco_value(const truco_game *game)
@@ -1027,21 +1061,57 @@ unsigned int truco_game_truco_value(const truco_game *game)
     if (game == 0) {
         return 0u;
     }
+    return game->truco_value;
+}
 
-    return G(game)->truco_value;
+unsigned int truco_game_envido_points(const truco_game *game, unsigned int player)
+{
+    if (game == 0 || player >= game->settings.player_count) {
+        return 0u;
+    }
+
+    return envido_points_from_cards(game->hands[player]);
+}
+
+unsigned int truco_game_score(const truco_game *game, unsigned int team)
+{
+    if (game == 0 || team >= TRUCO_MAX_TEAMS) {
+        return 0u;
+    }
+    return game->score[team];
+}
+
+int truco_game_hand_winner(const truco_game *game)
+{
+    if (game == 0 ||
+        (game->phase != TRUCO_PHASE_HAND_OVER && game->phase != TRUCO_PHASE_GAME_OVER)) {
+        return -1;
+    }
+
+    return game->last_hand_winner;
+}
+
+int truco_game_trick_winner(const truco_game *game, unsigned int trick)
+{
+    if (game == 0 || trick >= TRUCO_HAND_CARDS) {
+        return -2;
+    }
+    return game->trick_winner_team[trick];
 }
 
 truco_status truco_game_hand_card(const truco_game *game,
                                   unsigned int player,
                                   unsigned int slot,
-                                  truco_card *out)
+                                  truco_suit *suit_out,
+                                  unsigned int *rank_out)
 {
-    if (game == 0 || out == 0 || player >= G(game)->config.player_count ||
-        slot >= TRUCO_HAND_CARDS) {
+    if (game == 0 || suit_out == 0 || rank_out == 0 ||
+        player >= game->settings.player_count || slot >= TRUCO_HAND_CARDS) {
         return TRUCO_ERR_INVALID_ARGUMENT;
     }
 
-    *out = G(game)->hands[player][slot];
+    *suit_out = (truco_suit)game->hands[player][slot].suit;
+    *rank_out = game->hands[player][slot].rank;
     return TRUCO_OK;
 }
 
@@ -1049,34 +1119,36 @@ int truco_game_hand_slot_played(const truco_game *game,
                                 unsigned int player,
                                 unsigned int slot)
 {
-    if (game == 0 || player >= G(game)->config.player_count ||
+    if (game == 0 || player >= game->settings.player_count ||
         slot >= TRUCO_HAND_CARDS) {
         return -1;
     }
 
-    return G(game)->played_slots[player][slot] ? 1 : 0;
+    return game->played_slots[player][slot] ? 1 : 0;
 }
 
 truco_status truco_game_set_hand(truco_game *game,
                                  unsigned int player,
-                                 const truco_card cards[TRUCO_HAND_CARDS])
+                                 const truco_suit suits[TRUCO_HAND_CARDS],
+                                 const unsigned int ranks[TRUCO_HAND_CARDS])
 {
     unsigned int slot;
 
-    if (game == 0 || cards == 0 || player >= G(game)->config.player_count) {
+    if (game == 0 || suits == 0 || ranks == 0 ||
+        player >= game->settings.player_count) {
         return TRUCO_ERR_INVALID_ARGUMENT;
     }
 
-    if (G(game)->phase != TRUCO_PHASE_PLAYING || has_any_card_been_played(game)) {
+    if (game->phase != TRUCO_PHASE_PLAYING || has_any_card_been_played(game)) {
         return TRUCO_ERR_INVALID_STATE;
     }
 
     for (slot = 0u; slot < TRUCO_HAND_CARDS; ++slot) {
-        if (!truco_card_is_valid(cards[slot])) {
+        if (!truco_card_is_valid(suits[slot], ranks[slot])) {
             return TRUCO_ERR_INVALID_ARGUMENT;
         }
-        G(game)->hands[player][slot] = cards[slot];
-        G(game)->played_slots[player][slot] = 0u;
+        game->hands[player][slot] = truco_card_internal_make(suits[slot], ranks[slot]);
+        game->played_slots[player][slot] = 0u;
     }
 
     return TRUCO_OK;

@@ -3,17 +3,22 @@
 
 #include "truco.h"
 
-typedef struct truco_config_impl {
+typedef struct truco_card_internal {
+    unsigned char suit;
+    unsigned char rank;
+} truco_card_internal;
+
+typedef struct truco_game_settings {
     unsigned int player_count;
     unsigned int target_score;
     unsigned int seed;
     unsigned int initial_dealer;
     unsigned char team_for_player[TRUCO_MAX_PLAYERS];
     unsigned int flags;
-} truco_config_impl;
+} truco_game_settings;
 
-typedef struct truco_game_impl {
-    truco_config_impl config;
+struct truco_game {
+    truco_game_settings settings;
     unsigned int rng_state;
     unsigned int phase;
     unsigned int dealer;
@@ -30,37 +35,37 @@ typedef struct truco_game_impl {
     int envido_resolved;
     int last_hand_winner;
     unsigned int score[TRUCO_MAX_TEAMS];
-    truco_card hands[TRUCO_MAX_PLAYERS][TRUCO_HAND_CARDS];
+    truco_card_internal hands[TRUCO_MAX_PLAYERS][TRUCO_HAND_CARDS];
     unsigned char played_slots[TRUCO_MAX_PLAYERS][TRUCO_HAND_CARDS];
-    truco_card trick_cards[TRUCO_HAND_CARDS][TRUCO_MAX_PLAYERS];
+    truco_card_internal trick_cards[TRUCO_HAND_CARDS][TRUCO_MAX_PLAYERS];
     unsigned char trick_played[TRUCO_HAND_CARDS][TRUCO_MAX_PLAYERS];
     int trick_winner_team[TRUCO_HAND_CARDS];
     int trick_winner_player[TRUCO_HAND_CARDS];
-} truco_game_impl;
+};
 
-typedef char truco_config_storage_ok
-    [(sizeof(truco_config_impl) <= TRUCO_CONFIG_STORAGE_BYTES) ? 1 : -1];
-typedef char truco_game_storage_ok
-    [(sizeof(truco_game_impl) <= TRUCO_GAME_STORAGE_BYTES) ? 1 : -1];
-
-static inline truco_config_impl *truco_config_unwrap(truco_config *config)
+static inline truco_card_internal truco_card_internal_make(truco_suit suit,
+                                                           unsigned int rank)
 {
-    return (truco_config_impl *)(void *)config;
+    truco_card_internal card;
+
+    card.suit = (unsigned char)suit;
+    card.rank = (unsigned char)rank;
+    return card;
 }
 
-static inline const truco_config_impl *truco_config_unwrap_const(const truco_config *config)
+static inline int truco_card_internal_compare(truco_card_internal left,
+                                              truco_card_internal right)
 {
-    return (const truco_config_impl *)(const void *)config;
-}
+    int left_power = truco_card_power((truco_suit)left.suit, left.rank);
+    int right_power = truco_card_power((truco_suit)right.suit, right.rank);
 
-static inline truco_game_impl *truco_game_unwrap(truco_game *game)
-{
-    return (truco_game_impl *)(void *)game;
-}
-
-static inline const truco_game_impl *truco_game_unwrap_const(const truco_game *game)
-{
-    return (const truco_game_impl *)(const void *)game;
+    if (left_power > right_power) {
+        return 1;
+    }
+    if (left_power < right_power) {
+        return -1;
+    }
+    return 0;
 }
 
 #endif

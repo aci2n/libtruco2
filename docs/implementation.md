@@ -16,25 +16,22 @@ The library is intentionally small and conservative:
 - Flexible enough for 2-player and 4-player tables today, with fixed capacity
   for 6 players reserved for future 3v3 rules.
 
-The implementation avoids allocation, callbacks, threads, global mutable state,
-and I/O inside the engine. All game state lives in a caller-owned `truco_game`
-struct.
+The implementation avoids callbacks, threads, global mutable state, and I/O
+inside the engine. Game state lives in an opaque `truco_game` object allocated
+by `truco_game_create` and released by `truco_game_destroy`.
 
 ## Public API layout
 
-The public API is declared in `include/truco.h`. It exposes:
+The public API is declared in `include/truco.h`. It exposes only enums, the opaque `truco_game` handle, and functions.
 
 - Compile-time constants:
   - `TRUCO_DECK_SIZE`: 40 cards.
   - `TRUCO_HAND_CARDS`: 3 cards per player.
   - `TRUCO_MAX_PLAYERS`: 6, reserving space for 3v3.
   - `TRUCO_MAX_TEAMS`: 2.
-- Value types:
-  - `truco_card`
-  - `truco_legal_actions`
-- Opaque storage types:
-  - `truco_config`
-  - `truco_game`
+- Opaque game handle:
+  - `truco_game` (forward declared; allocated with `truco_game_create`)
+- Enums for status codes, suits, phases, and commands
 - Small enums for status codes, suits, phases, and commands.
 - Stateless card/deck helpers.
 - `truco_game_apply`, the only public game mutation entry point.
@@ -48,7 +45,7 @@ The API uses explicit status returns rather than `errno`. Functions return
 Clients mutate game state with scoped `truco_command` values:
 
 ```c
-truco_game_apply(&game, player, TRUCO_CMD_PLAY_CARD_0);
+truco_game_apply(game, player, TRUCO_CMD_PLAY_CARD_0);
 truco_game_apply(&game, player, TRUCO_CMD_CALL_REAL_ENVIDO);
 truco_game_apply(&game, player, TRUCO_CMD_ACCEPT_BID);
 ```
@@ -62,13 +59,10 @@ Clients should use `truco_game_legal_actions` to discover valid commands for a
 player before calling `truco_game_apply`. This keeps UIs and bots from
 duplicating engine rules or probing with mutating calls.
 
-The result is intentionally small:
+Callers pass a `truco_command` buffer and receive:
 
-- `count`: number of legal commands.
-- `commands[]`: exact command values that can be passed to `truco_game_apply`.
-- `truco_value`: the requested Truco value for either a legal raise or a pending
-  Truco response.
-- `envido_points`: the pending Envido points for a legal Envido response.
+- `count_out`: number of legal commands written.
+- optional `truco_value_out` and `envido_points_out` for bid UI hints.
 
 The command list makes clients simple: render each command, let the user or bot
 choose one, then pass the chosen enum back to `truco_game_apply`.
@@ -78,7 +72,7 @@ dispatch helpers. This keeps command availability and command execution aligned.
 
 ## Memory and ownership
 
-`truco_game` is an opaque storage struct owned by the embedder:
+`truco_game` is an opaque handle allocated by the library:
 
 ```c
 truco_game game;
@@ -99,10 +93,11 @@ version their own serialized representation.
 
 ## Table configuration
 
-The caller initializes a `truco_config` with:
+The caller configures a game before initialization:
 
 ```c
-truco_config_default(&config, player_count);
+truco_game_set_player_count(game, player_count);
+truco_game_set_seed(game, seed);
 ```
 
 The default team assignment alternates players by index:
@@ -116,7 +111,7 @@ The default team assignment alternates players by index:
 `player_count == 4`. Six-player games return `TRUCO_ERR_UNSUPPORTED_RULES` so
 the capacity is visible without pretending that 3v3 rule differences are solved.
 
-Callers may customize team assignment with `truco_config_set_team_for_player`
+Callers may customize team assignment with `truco_game_set_team_for_player`
 before initialization as long as each active player maps to team `0` or `1`.
 
 ## Game phases
@@ -311,7 +306,7 @@ Likely extension points:
 
 - Replace `is_supported_player_count` with a rule-set check that can admit
   six-player games only when 3v3-specific behavior is implemented.
-- Use `config.flags` or an added rule enum for variants.
+- Use `settings.flags` or an added rule enum for variants.
 - Audit mano, partner, seating, and score behavior for 3v3-specific rules.
 - Extend tests with six-player dealing, bidding, trick resolution, and any
   variant-specific scoring.
