@@ -2,6 +2,12 @@
 
 #include <string.h>
 
+typedef enum envido_bid {
+    ENVIDO = 2,
+    REAL_ENVIDO = 3,
+    FALTA_ENVIDO = -1
+} envido_bid;
+
 static int is_supported_player_count(unsigned int player_count)
 {
     return player_count == 2u || player_count == 4u;
@@ -196,9 +202,9 @@ static void finish_hand(truco_game *game, unsigned int winner_team)
     }
 }
 
-static int is_valid_bid(truco_envido_bid bid)
+static int is_valid_bid(envido_bid bid)
 {
-    return bid == TRUCO_ENVIDO || bid == TRUCO_REAL_ENVIDO || bid == TRUCO_FALTA_ENVIDO;
+    return bid == ENVIDO || bid == REAL_ENVIDO || bid == FALTA_ENVIDO;
 }
 
 static int is_valid_player(const truco_game *game, unsigned int player)
@@ -263,7 +269,7 @@ static int can_answer_truco(const truco_game *game, unsigned int player)
 
 static int can_call_envido(const truco_game *game,
                            unsigned int player,
-                           truco_envido_bid bid)
+                           envido_bid bid)
 {
     return is_valid_player(game, player) &&
            is_valid_bid(bid) &&
@@ -346,7 +352,7 @@ truco_status truco_game_init(truco_game *game, const truco_config *config)
     return TRUCO_OK;
 }
 
-truco_status truco_game_start_hand(truco_game *game)
+static truco_status start_hand(truco_game *game)
 {
     truco_card deck[TRUCO_DECK_SIZE];
     unsigned int player;
@@ -557,34 +563,9 @@ truco_status truco_shuffle(truco_card *cards, size_t count, unsigned int *seed)
     return TRUCO_OK;
 }
 
-truco_status truco_game_set_hand(truco_game *game,
-                                 unsigned int player,
-                                 const truco_card cards[TRUCO_HAND_CARDS])
-{
-    unsigned int slot;
-
-    if (game == 0 || cards == 0 || player >= game->config.player_count) {
-        return TRUCO_ERR_INVALID_ARGUMENT;
-    }
-
-    if (game->phase != TRUCO_PHASE_PLAYING && game->phase != TRUCO_PHASE_READY) {
-        return TRUCO_ERR_INVALID_STATE;
-    }
-
-    for (slot = 0u; slot < TRUCO_HAND_CARDS; ++slot) {
-        if (!truco_card_is_valid(cards[slot])) {
-            return TRUCO_ERR_INVALID_ARGUMENT;
-        }
-    }
-
-    memcpy(game->hands[player], cards, sizeof(game->hands[player]));
-    memset(game->played_slots[player], 0, sizeof(game->played_slots[player]));
-    return TRUCO_OK;
-}
-
-truco_status truco_game_play_card(truco_game *game,
-                                  unsigned int player,
-                                  unsigned int card_index)
+static truco_status play_card(truco_game *game,
+                              unsigned int player,
+                              unsigned int card_index)
 {
     int hand_winner;
 
@@ -639,7 +620,7 @@ truco_status truco_game_play_card(truco_game *game,
     return TRUCO_OK;
 }
 
-truco_status truco_game_raise_truco(truco_game *game, unsigned int player)
+static truco_status raise_truco(truco_game *game, unsigned int player)
 {
     unsigned int player_team;
 
@@ -658,7 +639,7 @@ truco_status truco_game_raise_truco(truco_game *game, unsigned int player)
     return TRUCO_OK;
 }
 
-truco_status truco_game_accept_truco(truco_game *game, unsigned int player)
+static truco_status accept_truco(truco_game *game, unsigned int player)
 {
     if (game == 0 || player >= game->config.player_count) {
         return TRUCO_ERR_INVALID_ARGUMENT;
@@ -676,7 +657,7 @@ truco_status truco_game_accept_truco(truco_game *game, unsigned int player)
     return TRUCO_OK;
 }
 
-truco_status truco_game_decline_truco(truco_game *game, unsigned int player)
+static truco_status decline_truco(truco_game *game, unsigned int player)
 {
     unsigned int winner_team;
 
@@ -696,9 +677,9 @@ truco_status truco_game_decline_truco(truco_game *game, unsigned int player)
     return TRUCO_OK;
 }
 
-truco_status truco_game_call_envido(truco_game *game,
-                                    unsigned int player,
-                                    truco_envido_bid bid)
+static truco_status call_envido(truco_game *game,
+                                unsigned int player,
+                                envido_bid bid)
 {
     unsigned int player_team;
     unsigned int points;
@@ -712,7 +693,7 @@ truco_status truco_game_call_envido(truco_game *game,
     }
 
     player_team = team_for(game, player);
-    points = bid == TRUCO_FALTA_ENVIDO ? falta_envido_points(game, player_team) : (unsigned int)bid;
+    points = bid == FALTA_ENVIDO ? falta_envido_points(game, player_team) : (unsigned int)bid;
 
     game->envido_pending_team = (int)player_team;
     game->envido_pending_points = points;
@@ -720,7 +701,7 @@ truco_status truco_game_call_envido(truco_game *game,
     return TRUCO_OK;
 }
 
-truco_status truco_game_accept_envido(truco_game *game, unsigned int player)
+static truco_status accept_envido(truco_game *game, unsigned int player)
 {
     unsigned int best_points[TRUCO_MAX_TEAMS] = {0u, 0u};
     unsigned int best_player[TRUCO_MAX_TEAMS] = {0u, 0u};
@@ -764,7 +745,7 @@ truco_status truco_game_accept_envido(truco_game *game, unsigned int player)
     return TRUCO_OK;
 }
 
-truco_status truco_game_decline_envido(truco_game *game, unsigned int player)
+static truco_status decline_envido(truco_game *game, unsigned int player)
 {
     unsigned int winner_team;
 
@@ -785,6 +766,61 @@ truco_status truco_game_decline_envido(truco_game *game, unsigned int player)
     return TRUCO_OK;
 }
 
+truco_status truco_game_apply(truco_game *game,
+                              unsigned int player,
+                              truco_command command)
+{
+    if (!is_valid_player(game, player)) {
+        return TRUCO_ERR_INVALID_ARGUMENT;
+    }
+
+    switch (command) {
+    case TRUCO_CMD_START_HAND:
+        return start_hand(game);
+    case TRUCO_CMD_PLAY_CARD_0:
+        return play_card(game, player, 0u);
+    case TRUCO_CMD_PLAY_CARD_1:
+        return play_card(game, player, 1u);
+    case TRUCO_CMD_PLAY_CARD_2:
+        return play_card(game, player, 2u);
+    case TRUCO_CMD_RAISE_TRUCO:
+        return raise_truco(game, player);
+    case TRUCO_CMD_CALL_ENVIDO:
+        return call_envido(game, player, ENVIDO);
+    case TRUCO_CMD_CALL_REAL_ENVIDO:
+        return call_envido(game, player, REAL_ENVIDO);
+    case TRUCO_CMD_CALL_FALTA_ENVIDO:
+        return call_envido(game, player, FALTA_ENVIDO);
+    case TRUCO_CMD_ACCEPT_BID:
+        if (can_answer_truco(game, player)) {
+            return accept_truco(game, player);
+        }
+        if (can_answer_envido(game, player)) {
+            return accept_envido(game, player);
+        }
+        return TRUCO_ERR_INVALID_STATE;
+    case TRUCO_CMD_REJECT_BID:
+        if (can_answer_truco(game, player)) {
+            return decline_truco(game, player);
+        }
+        if (can_answer_envido(game, player)) {
+            return decline_envido(game, player);
+        }
+        return TRUCO_ERR_INVALID_STATE;
+    case TRUCO_CMD_NONE:
+    default:
+        return TRUCO_ERR_INVALID_ARGUMENT;
+    }
+}
+
+static void add_legal_command(truco_legal_actions *actions,
+                              truco_command command)
+{
+    if (actions->count < TRUCO_MAX_LEGAL_COMMANDS) {
+        actions->commands[actions->count++] = command;
+    }
+}
+
 truco_status truco_game_legal_actions(const truco_game *game,
                                       unsigned int player,
                                       truco_legal_actions *actions)
@@ -798,7 +834,7 @@ truco_status truco_game_legal_actions(const truco_game *game,
     memset(actions, 0, sizeof(*actions));
 
     if (can_start_hand(game)) {
-        actions->flags |= TRUCO_ACTION_START_HAND;
+        add_legal_command(actions, TRUCO_CMD_START_HAND);
         return TRUCO_OK;
     }
 
@@ -808,36 +844,34 @@ truco_status truco_game_legal_actions(const truco_game *game,
 
     for (slot = 0u; slot < TRUCO_HAND_CARDS; ++slot) {
         if (can_play_card(game, player, slot)) {
-            actions->flags |= TRUCO_ACTION_PLAY_CARD;
-            actions->playable_cards[slot] = 1u;
+            add_legal_command(actions, (truco_command)(TRUCO_CMD_PLAY_CARD_0 + slot));
         }
     }
 
     if (can_raise_truco(game, player)) {
-        actions->flags |= TRUCO_ACTION_RAISE_TRUCO;
+        add_legal_command(actions, TRUCO_CMD_RAISE_TRUCO);
         actions->truco_value = next_truco_value(game);
     }
 
     if (can_answer_truco(game, player)) {
-        actions->flags |= TRUCO_ACTION_ACCEPT_TRUCO | TRUCO_ACTION_DECLINE_TRUCO;
+        add_legal_command(actions, TRUCO_CMD_ACCEPT_BID);
+        add_legal_command(actions, TRUCO_CMD_REJECT_BID);
         actions->truco_value = game->pending_truco_value;
     }
 
-    if (can_call_envido(game, player, TRUCO_ENVIDO)) {
-        actions->flags |= TRUCO_ACTION_CALL_ENVIDO;
-        actions->envido_options |= TRUCO_ENVIDO_OPTION_ENVIDO;
+    if (can_call_envido(game, player, ENVIDO)) {
+        add_legal_command(actions, TRUCO_CMD_CALL_ENVIDO);
     }
-    if (can_call_envido(game, player, TRUCO_REAL_ENVIDO)) {
-        actions->flags |= TRUCO_ACTION_CALL_ENVIDO;
-        actions->envido_options |= TRUCO_ENVIDO_OPTION_REAL_ENVIDO;
+    if (can_call_envido(game, player, REAL_ENVIDO)) {
+        add_legal_command(actions, TRUCO_CMD_CALL_REAL_ENVIDO);
     }
-    if (can_call_envido(game, player, TRUCO_FALTA_ENVIDO)) {
-        actions->flags |= TRUCO_ACTION_CALL_ENVIDO;
-        actions->envido_options |= TRUCO_ENVIDO_OPTION_FALTA_ENVIDO;
+    if (can_call_envido(game, player, FALTA_ENVIDO)) {
+        add_legal_command(actions, TRUCO_CMD_CALL_FALTA_ENVIDO);
     }
 
     if (can_answer_envido(game, player)) {
-        actions->flags |= TRUCO_ACTION_ACCEPT_ENVIDO | TRUCO_ACTION_DECLINE_ENVIDO;
+        add_legal_command(actions, TRUCO_CMD_ACCEPT_BID);
+        add_legal_command(actions, TRUCO_CMD_REJECT_BID);
         actions->envido_points = game->envido_pending_points;
     }
 

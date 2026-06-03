@@ -33,38 +33,46 @@ The public API is declared in `include/truco.h`. It exposes:
   - `truco_card`
   - `truco_config`
   - `truco_game`
-- Small enums for status codes, suits, phases, and bids.
+- Small enums for status codes, suits, phases, and commands.
 - Stateless card/deck helpers.
-- Stateful game functions for dealing, playing cards, bidding, and scoring.
+- `truco_game_apply`, the only public game mutation entry point.
+- `truco_game_legal_actions`, the non-mutating command discovery API.
 
 The API uses explicit status returns rather than `errno`. Functions return
 `TRUCO_OK` on success or a negative `truco_status` value on failure.
 
-## Legal action discovery
+## Command dispatch and legal action discovery
+
+Clients mutate game state with scoped `truco_command` values:
+
+```c
+truco_game_apply(&game, player, TRUCO_CMD_PLAY_CARD_0);
+truco_game_apply(&game, player, TRUCO_CMD_CALL_REAL_ENVIDO);
+truco_game_apply(&game, player, TRUCO_CMD_ACCEPT_BID);
+```
+
+Specific operations such as playing a card, calling Envido, accepting a bid, or
+starting a hand are private helpers inside `src/truco.c`. The public API stays
+small and protocol-like: clients submit a command and the engine validates and
+applies it.
 
 Clients should use `truco_game_legal_actions` to discover valid commands for a
-player. This keeps UIs and bots from duplicating engine rules or probing by
-calling mutating functions.
+player before calling `truco_game_apply`. This keeps UIs and bots from
+duplicating engine rules or probing with mutating calls.
 
 The result is intentionally small:
 
-- `flags`: a bitmask of generic commands such as `TRUCO_ACTION_PLAY_CARD`,
-  `TRUCO_ACTION_RAISE_TRUCO`, or `TRUCO_ACTION_ACCEPT_ENVIDO`.
-- `playable_cards[3]`: per-slot markers used when `TRUCO_ACTION_PLAY_CARD` is
-  present.
-- `envido_options`: a bitmask of callable Envido variants used when
-  `TRUCO_ACTION_CALL_ENVIDO` is present.
+- `count`: number of legal commands.
+- `commands[]`: exact command values that can be passed to `truco_game_apply`.
 - `truco_value`: the requested Truco value for either a legal raise or a pending
   Truco response.
 - `envido_points`: the pending Envido points for a legal Envido response.
 
-The API is deliberately a single query function rather than many `can_*`
-functions. Clients get all currently useful command data in one call while the
-engine remains free to add more flags or detail fields later.
+The command list makes clients simple: render each command, let the user or bot
+choose one, then pass the chosen enum back to `truco_game_apply`.
 
 Internally, legal action discovery uses the same `can_*` predicates as the
-mutating command functions. This keeps command availability and command
-execution aligned.
+dispatch helpers. This keeps command availability and command execution aligned.
 
 ## Memory and ownership
 
@@ -122,8 +130,8 @@ The engine tracks coarse state with `truco_phase`:
 - `TRUCO_PHASE_HAND_OVER`: a hand ended and another hand can be started.
 - `TRUCO_PHASE_GAME_OVER`: a team reached `target_score`.
 
-`truco_game_start_hand` is valid only from `READY` or `HAND_OVER`. Starting a
-new hand during `PLAYING` would overwrite an in-progress hand, so it returns
+`TRUCO_CMD_START_HAND` is valid only from `READY` or `HAND_OVER`. Starting a new
+hand during `PLAYING` would overwrite an in-progress hand, so dispatch returns
 `TRUCO_ERR_INVALID_STATE`.
 
 ## Dealing and randomness
@@ -135,7 +143,7 @@ new hand during `PLAYING` would overwrite an in-progress hand, so it returns
 Fisher-Yates shuffle. This is not intended to be cryptographically secure. It is
 intended to be dependency-free, portable, and reproducible for tests and bots.
 
-`truco_game_start_hand`:
+The private `start_hand` helper behind `TRUCO_CMD_START_HAND`:
 
 1. Builds a fresh deck.
 2. Shuffles with `game->rng_state`.
@@ -170,7 +178,8 @@ normalizes ranking to `-1`, `0`, or `1`.
 
 ## Trick flow
 
-`truco_game_play_card(game, player, card_index)` enforces:
+The private `play_card` helper behind `TRUCO_CMD_PLAY_CARD_0`,
+`TRUCO_CMD_PLAY_CARD_1`, and `TRUCO_CMD_PLAY_CARD_2` enforces:
 
 - Active phase is `TRUCO_PHASE_PLAYING`.
 - No unresolved Truco bid.
@@ -212,7 +221,7 @@ Truco value, and moves the game to `HAND_OVER` or `GAME_OVER`.
 
 The current hand starts with `truco_value == 1`.
 
-`truco_game_raise_truco` creates a pending raise:
+`TRUCO_CMD_RAISE_TRUCO` creates a pending raise:
 
 - From 1 to Truco value 2.
 - From 2 to Retruco value 3.
@@ -221,12 +230,11 @@ The current hand starts with `truco_value == 1`.
 The same team cannot raise twice in a row. While a raise is pending, card play is
 blocked until the opposing team accepts or declines.
 
-`truco_game_accept_truco` commits the pending value and records which team made
-the last accepted raise.
+`TRUCO_CMD_ACCEPT_BID` commits the pending value and records which team made the
+last accepted raise when the pending bid is Truco.
 
-`truco_game_decline_truco` awards the hand immediately to the raising team at
-the previously accepted hand value. For the initial Truco call, this is one
-point.
+`TRUCO_CMD_REJECT_BID` awards the hand immediately to the raising team at the
+previously accepted hand value. For the initial Truco call, this is one point.
 
 ## Envido
 
@@ -237,17 +245,19 @@ point.
   `20 + value_a + value_b`.
 - If no pair exists, the score is the highest single card value.
 
-`truco_game_call_envido` is valid only before any card has been played and only
-once per hand in this initial implementation. It supports:
+The Envido call commands are valid only before any card has been played and only
+once per hand in this initial implementation. They are:
 
-- `TRUCO_ENVIDO`: 2 points if accepted.
-- `TRUCO_REAL_ENVIDO`: 3 points if accepted.
-- `TRUCO_FALTA_ENVIDO`: points required based on the leading score and target.
+- `TRUCO_CMD_CALL_ENVIDO`: 2 points if accepted.
+- `TRUCO_CMD_CALL_REAL_ENVIDO`: 3 points if accepted.
+- `TRUCO_CMD_CALL_FALTA_ENVIDO`: points required based on the leading score and
+  target.
 
-`truco_game_accept_envido` computes each team's best player score. Ties are
-broken by mano order using `compare_mano_order`.
+`TRUCO_CMD_ACCEPT_BID` computes each team's best player score when the pending
+bid is Envido. Ties are broken by mano order using `compare_mano_order`.
 
-`truco_game_decline_envido` awards one point to the calling team.
+`TRUCO_CMD_REJECT_BID` awards one point to the calling team when the pending bid
+is Envido.
 
 ## Scoring and target score
 
@@ -272,12 +282,14 @@ Coverage focuses on:
 - Truco raise/accept/decline behavior.
 - Parda/tied-trick behavior.
 - Envido accept/decline behavior.
-- Legal action discovery for ready, playing, pending bid, and post-card states.
+- Command dispatch and legal action discovery for ready, playing, pending bid,
+  and post-card states.
 - 2v2 team assignment and trick flow.
 - Reserved 3v3 capacity returning `TRUCO_ERR_UNSUPPORTED_RULES`.
 
-The tests set hands explicitly with `truco_game_set_hand` where deterministic
-rule scenarios are needed.
+The tests set hands directly through the public `truco_game` struct where
+deterministic rule scenarios are needed. That keeps test setup out of the
+library's public command API.
 
 ## Build artifacts
 

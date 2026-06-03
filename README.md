@@ -64,7 +64,7 @@ int main(void)
         return 1;
     }
 
-    if (truco_game_start_hand(&game) != TRUCO_OK) {
+    if (truco_game_apply(&game, 0, TRUCO_CMD_START_HAND) != TRUCO_OK) {
         return 1;
     }
 
@@ -76,20 +76,20 @@ The API does not allocate memory. `truco_game` is a plain C struct that callers
 can own directly, place in larger application state, serialize with their own
 format, or reset by calling `truco_game_init`.
 
-Clients can discover valid commands without mutating the game:
+Clients mutate the game by applying scoped commands. They can discover valid
+commands without mutating the game:
 
 ```c
 truco_legal_actions actions;
 
 if (truco_game_legal_actions(&game, player, &actions) == TRUCO_OK) {
-    if (actions.flags & TRUCO_ACTION_PLAY_CARD) {
-        /* actions.playable_cards[0..2] marks the playable hand slots. */
-    }
-
-    if (actions.flags & TRUCO_ACTION_RAISE_TRUCO) {
-        /* actions.truco_value is the value requested by the raise. */
+    for (unsigned int i = 0; i < actions.count; ++i) {
+        render_button(actions.commands[i]);
     }
 }
+
+/* Apply a command selected from the legal command list. */
+truco_game_apply(&game, player, actions.commands[selected]);
 ```
 
 For a technical description of the implementation, see

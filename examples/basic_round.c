@@ -29,7 +29,7 @@ int main(void)
     config.seed = 42u;
 
     if (truco_game_init(&game, &config) != TRUCO_OK ||
-        truco_game_start_hand(&game) != TRUCO_OK) {
+        truco_game_apply(&game, 0u, TRUCO_CMD_START_HAND) != TRUCO_OK) {
         fprintf(stderr, "could not start truco game\n");
         return 1;
     }

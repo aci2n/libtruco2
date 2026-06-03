@@ -13,6 +13,7 @@ extern "C" {
 
 #define TRUCO_DECK_SIZE 40u
 #define TRUCO_HAND_CARDS 3u
+#define TRUCO_MAX_LEGAL_COMMANDS 12u
 #define TRUCO_MAX_PLAYERS 6u
 #define TRUCO_MAX_TEAMS 2u
 
@@ -39,38 +40,19 @@ typedef enum truco_phase {
     TRUCO_PHASE_GAME_OVER = 3
 } truco_phase;
 
-typedef enum truco_bid {
-    TRUCO_BID_NONE = 0,
-    TRUCO_BID_TRUCO = 2,
-    TRUCO_BID_RETRUCO = 3,
-    TRUCO_BID_VALE_CUATRO = 4
-} truco_bid;
-
-typedef enum truco_envido_bid {
-    TRUCO_ENVIDO_NONE = 0,
-    TRUCO_ENVIDO = 2,
-    TRUCO_REAL_ENVIDO = 3,
-    TRUCO_FALTA_ENVIDO = -1
-} truco_envido_bid;
-
-typedef enum truco_action {
-    TRUCO_ACTION_NONE = 0u,
-    TRUCO_ACTION_START_HAND = 1u << 0,
-    TRUCO_ACTION_PLAY_CARD = 1u << 1,
-    TRUCO_ACTION_RAISE_TRUCO = 1u << 2,
-    TRUCO_ACTION_ACCEPT_TRUCO = 1u << 3,
-    TRUCO_ACTION_DECLINE_TRUCO = 1u << 4,
-    TRUCO_ACTION_CALL_ENVIDO = 1u << 5,
-    TRUCO_ACTION_ACCEPT_ENVIDO = 1u << 6,
-    TRUCO_ACTION_DECLINE_ENVIDO = 1u << 7
-} truco_action;
-
-typedef enum truco_envido_option {
-    TRUCO_ENVIDO_OPTION_NONE = 0u,
-    TRUCO_ENVIDO_OPTION_ENVIDO = 1u << 0,
-    TRUCO_ENVIDO_OPTION_REAL_ENVIDO = 1u << 1,
-    TRUCO_ENVIDO_OPTION_FALTA_ENVIDO = 1u << 2
-} truco_envido_option;
+typedef enum truco_command {
+    TRUCO_CMD_NONE = 0,
+    TRUCO_CMD_START_HAND,
+    TRUCO_CMD_PLAY_CARD_0,
+    TRUCO_CMD_PLAY_CARD_1,
+    TRUCO_CMD_PLAY_CARD_2,
+    TRUCO_CMD_RAISE_TRUCO,
+    TRUCO_CMD_CALL_ENVIDO,
+    TRUCO_CMD_CALL_REAL_ENVIDO,
+    TRUCO_CMD_CALL_FALTA_ENVIDO,
+    TRUCO_CMD_ACCEPT_BID,
+    TRUCO_CMD_REJECT_BID
+} truco_command;
 
 typedef struct truco_card {
     unsigned char suit;
@@ -78,9 +60,8 @@ typedef struct truco_card {
 } truco_card;
 
 typedef struct truco_legal_actions {
-    unsigned int flags;
-    unsigned char playable_cards[TRUCO_HAND_CARDS];
-    unsigned int envido_options;
+    unsigned int count;
+    truco_command commands[TRUCO_MAX_LEGAL_COMMANDS];
     unsigned int truco_value;
     unsigned int envido_points;
 } truco_legal_actions;
@@ -122,7 +103,6 @@ typedef struct truco_game {
 
 void truco_config_default(truco_config *config, unsigned int player_count);
 truco_status truco_game_init(truco_game *game, const truco_config *config);
-truco_status truco_game_start_hand(truco_game *game);
 
 truco_card truco_make_card(truco_suit suit, unsigned int rank);
 int truco_card_is_valid(truco_card card);
@@ -133,23 +113,9 @@ unsigned int truco_envido_points(const truco_card cards[TRUCO_HAND_CARDS]);
 truco_status truco_deck(truco_card *cards, size_t count);
 truco_status truco_shuffle(truco_card *cards, size_t count, unsigned int *seed);
 
-truco_status truco_game_set_hand(truco_game *game,
-                                 unsigned int player,
-                                 const truco_card cards[TRUCO_HAND_CARDS]);
-truco_status truco_game_play_card(truco_game *game,
-                                  unsigned int player,
-                                  unsigned int card_index);
-
-truco_status truco_game_raise_truco(truco_game *game, unsigned int player);
-truco_status truco_game_accept_truco(truco_game *game, unsigned int player);
-truco_status truco_game_decline_truco(truco_game *game, unsigned int player);
-
-truco_status truco_game_call_envido(truco_game *game,
-                                    unsigned int player,
-                                    truco_envido_bid bid);
-truco_status truco_game_accept_envido(truco_game *game, unsigned int player);
-truco_status truco_game_decline_envido(truco_game *game, unsigned int player);
-
+truco_status truco_game_apply(truco_game *game,
+                              unsigned int player,
+                              truco_command command);
 truco_status truco_game_legal_actions(const truco_game *game,
                                       unsigned int player,
                                       truco_legal_actions *actions);
