@@ -1,8 +1,9 @@
 #include "truco.h"
 
 #include <stdio.h>
+#include <stdlib.h>
 
-static const char *suit_name(unsigned int suit)
+static const char *suit_name(truco_suit suit)
 {
     switch (suit) {
     case TRUCO_SUIT_ESPADA:
@@ -20,29 +21,41 @@ static const char *suit_name(unsigned int suit)
 
 int main(void)
 {
-    truco_config config;
-    truco_game game;
+    truco_game *game = truco_game_create();
     unsigned int player;
     unsigned int slot;
 
-    truco_config_default(&config, 4u);
-    config.seed = 42u;
-
-    if (truco_game_init(&game, &config) != TRUCO_OK ||
-        truco_game_apply(&game, 0u, TRUCO_CMD_START_HAND) != TRUCO_OK) {
-        fprintf(stderr, "could not start truco game\n");
+    if (game == 0) {
+        fprintf(stderr, "could not allocate truco game\n");
         return 1;
     }
 
-    printf("current player: %u\n", truco_game_current_player(&game));
-    for (player = 0u; player < truco_game_player_count(&game); ++player) {
-        printf("player %u team %u:", player, truco_game_team_for_player(&game, player));
-        for (slot = 0u; slot < TRUCO_HAND_CARDS; ++slot) {
-            truco_card card = game.hands[player][slot];
-            printf(" %u-%s", (unsigned int)card.rank, suit_name(card.suit));
-        }
-        printf(" envido=%u\n", truco_envido_points(game.hands[player]));
+    if (truco_game_set_player_count(game, 4u) != TRUCO_OK ||
+        truco_game_set_seed(game, 42u) != TRUCO_OK ||
+        truco_game_init(game) != TRUCO_OK ||
+        truco_game_apply(game, 0u, TRUCO_CMD_START_HAND) != TRUCO_OK) {
+        fprintf(stderr, "could not start truco game\n");
+        truco_game_destroy(game);
+        return 1;
     }
 
+    printf("current player: %u\n", truco_game_current_player(game));
+    for (player = 0u; player < truco_game_player_count(game); ++player) {
+        printf("player %u team %u:", player, truco_game_team_for_player(game, player));
+        for (slot = 0u; slot < TRUCO_HAND_CARDS; ++slot) {
+            truco_suit suit;
+            unsigned int rank;
+
+            if (truco_game_hand_card(game, player, slot, &suit, &rank) != TRUCO_OK) {
+                fprintf(stderr, "could not read hand\n");
+                truco_game_destroy(game);
+                return 1;
+            }
+            printf(" %u-%s", rank, suit_name(suit));
+        }
+        printf(" envido=%u\n", truco_game_envido_points(game, player));
+    }
+
+    truco_game_destroy(game);
     return 0;
 }

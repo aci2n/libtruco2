@@ -12,7 +12,7 @@ The current engine supports:
 - Truco / retruco / vale cuatro bidding.
 - Envido, real envido, and falta envido resolution.
 - Fixed-capacity state for up to six players so 3v3 support can be added later
-  without changing the public struct layout.
+  without changing the public API.
 
 3v3 games are intentionally reserved for a future rule module because they have
 special table and scoring rules. Initializing a six-player game currently returns
@@ -38,13 +38,6 @@ make install PREFIX=/usr/local
 make clean
 ```
 
-The build uses only the C compiler, `ar`, and standard shell tools. Override
-toolchain variables in the usual GNU Make style:
-
-```sh
-make CC=gcc CFLAGS='-std=c99 -Wall -Wextra -O2 -g -fPIC'
-```
-
 ## Embedding
 
 Include `truco.h` and link either the static or shared library.
@@ -54,50 +47,55 @@ Include `truco.h` and link either the static or shared library.
 
 int main(void)
 {
-    truco_config config;
-    truco_game game;
+    truco_game *game = truco_game_create();
+    truco_command commands[16];
+    unsigned int count;
 
-    truco_config_default(&config, 4);
-    config.seed = 42;
-
-    if (truco_game_init(&game, &config) != TRUCO_OK) {
+    if (game == 0) {
         return 1;
     }
 
-    if (truco_game_apply(&game, 0, TRUCO_CMD_START_HAND) != TRUCO_OK) {
+    if (truco_game_set_player_count(game, 4) != TRUCO_OK ||
+        truco_game_set_seed(game, 42) != TRUCO_OK ||
+        truco_game_init(game) != TRUCO_OK ||
+        truco_game_apply(game, 0, TRUCO_CMD_START_HAND) != TRUCO_OK) {
+        truco_game_destroy(game);
         return 1;
     }
 
+    if (truco_game_legal_actions(game, 0, commands, 16, &count, 0, 0) == TRUCO_OK) {
+        for (unsigned int i = 0; i < count; ++i) {
+            render_button(commands[i]);
+        }
+    }
+
+    truco_game_destroy(game);
     return 0;
 }
 ```
 
-The API does not allocate memory. `truco_game` is a plain C struct that callers
-can own directly, place in larger application state, serialize with their own
-format, or reset by calling `truco_game_init`.
+The library allocates game state with `truco_game_create` and releases it with
+`truco_game_destroy`. `truco_game_size` reports the allocation size for callers
+that prefer their own allocators.
+
+Configure a game before calling `truco_game_init`:
+
+- `truco_game_set_player_count`
+- `truco_game_set_seed`
+- `truco_game_set_initial_dealer`
+- `truco_game_set_target_score`
+- `truco_game_set_team_for_player`
 
 Clients mutate the game by applying scoped commands. They can discover valid
-commands without mutating the game:
-
-```c
-truco_legal_actions actions;
-
-if (truco_game_legal_actions(&game, player, &actions) == TRUCO_OK) {
-    for (unsigned int i = 0; i < actions.count; ++i) {
-        render_button(actions.commands[i]);
-    }
-}
-
-/* Apply a command selected from the legal command list. */
-truco_game_apply(&game, player, actions.commands[selected]);
-```
+commands without mutating the game by passing a caller-owned `truco_command`
+buffer to `truco_game_legal_actions`.
 
 For a technical description of the implementation, see
 [`docs/implementation.md`](docs/implementation.md).
 
 ## Table configuration
 
-Use `truco_config_default(&config, player_count)` to start from the standard
+Use `truco_game_set_player_count(game, player_count)` to select the standard
 layout:
 
 - `player_count = 2`: players 0 and 1 are opposing teams.
@@ -106,7 +104,8 @@ layout:
   `TRUCO_ERR_UNSUPPORTED_RULES` until the special 3v3 rules are implemented.
 
 Teams can be customized before initialization with
-`config.team_for_player[player]`. The current engine supports two teams.
+`truco_game_set_team_for_player(game, player, team)`. The current engine supports
+two teams.
 
 ## Tests
 

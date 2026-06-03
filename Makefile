@@ -24,7 +24,7 @@ EXAMPLE_BIN := build/basic_round
 
 all: $(STATIC_LIB) $(SHARED_LIB)
 
-$(OBJ): $(SRC) include/truco.h
+$(OBJ): $(SRC) include/truco.h src/truco_internal.h
 	$(MKDIR_P) build
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
 
