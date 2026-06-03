@@ -77,9 +77,10 @@ int main(void)
 }
 ```
 
-`truco_game` is an opaque type. Call `truco_game_create` to allocate a game,
-configure it with the `truco_game_set_*` helpers, call `truco_game_init` to
-reset scores and runtime state, and call `truco_game_delete` when finished.
+`truco_game` is an opaque type. `truco_game_create` allocates a game and
+initializes it with default two-player settings. Adjust the table with
+`truco_game_set_*`, then call `truco_game_init` to apply those settings and
+reset scores and runtime state. Call `truco_game_delete` when finished.
 
 Clients mutate the game by applying scoped commands. They can discover valid
 commands without mutating the game:
@@ -102,7 +103,8 @@ For a technical description of the implementation, see
 
 ## Table configuration
 
-Configure a game before calling `truco_game_init`:
+After `truco_game_create`, configure the table with setters and call
+`truco_game_init` to apply them (or to reset an in-progress game):
 
 - `truco_game_set_player_count(game, 2)`: players 0 and 1 are opposing teams.
 - `truco_game_set_player_count(game, 4)`: players 0/2 vs. 1/3 by default.

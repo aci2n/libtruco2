@@ -77,7 +77,8 @@ dispatch helpers. This keeps command availability and command execution aligned.
 
 ## Memory and ownership
 
-`truco_game` is opaque and heap-allocated:
+`truco_game` is opaque and heap-allocated. `truco_game_create` initializes the
+object; `truco_game_init` is the public reset entry point:
 
 ```c
 truco_game *game = truco_game_create();

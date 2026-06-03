@@ -341,7 +341,19 @@ static void apply_default_teams(struct truco_settings *settings)
 
 truco_game *truco_game_create(void)
 {
-    return (truco_game *)calloc(1, sizeof(struct truco_game));
+    truco_game *game = (truco_game *)calloc(1, sizeof(struct truco_game));
+
+    if (game == 0) {
+        return 0;
+    }
+
+    if (truco_game_set_player_count(game, 2u) != TRUCO_OK ||
+        truco_game_init(game) != TRUCO_OK) {
+        free(game);
+        return 0;
+    }
+
+    return game;
 }
 
 void truco_game_delete(truco_game *game)

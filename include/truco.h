@@ -69,7 +69,9 @@ typedef struct truco_legal_actions {
 
 typedef struct truco_game truco_game;
 
+/* Allocates a game and initializes it with default two-player settings. */
 truco_game *truco_game_create(void);
+/* Resets runtime state from the current settings (call after set_* changes). */
 truco_status truco_game_init(truco_game *game);
 void truco_game_delete(truco_game *game);
 
