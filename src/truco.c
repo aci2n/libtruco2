@@ -270,7 +270,7 @@ truco_status truco_game_start_hand(truco_game *game)
         return TRUCO_ERR_INVALID_ARGUMENT;
     }
 
-    if (game->phase == TRUCO_PHASE_GAME_OVER) {
+    if (game->phase == TRUCO_PHASE_PLAYING || game->phase == TRUCO_PHASE_GAME_OVER) {
         return TRUCO_ERR_INVALID_STATE;
     }
 

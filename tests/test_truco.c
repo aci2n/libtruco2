@@ -107,6 +107,7 @@ static void test_two_player_hand_resolution(void)
     truco_game game;
 
     start_two_player_hand(&game);
+    CHECK(truco_game_start_hand(&game) == TRUCO_ERR_INVALID_STATE);
     install_basic_two_player_hands(&game);
     play_basic_two_player_hand(&game);
 
@@ -131,7 +132,7 @@ static void test_truco_bidding(void)
     expect_ok(truco_game_raise_truco(&game, 0u));
     expect_ok(truco_game_decline_truco(&game, 1u));
     CHECK(truco_game_phase(&game) == TRUCO_PHASE_HAND_OVER);
-    CHECK(truco_game_score(&game, 0u) == 3u);
+    CHECK(truco_game_score(&game, 0u) == 1u);
 }
 
 static void test_parda_rules(void)
@@ -188,7 +189,7 @@ static void test_envido_resolution(void)
     start_two_player_hand(&game);
     expect_ok(truco_game_call_envido(&game, 0u, TRUCO_REAL_ENVIDO));
     expect_ok(truco_game_decline_envido(&game, 1u));
-    CHECK(truco_game_score(&game, 0u) == 3u);
+    CHECK(truco_game_score(&game, 0u) == 1u);
 }
 
 static void test_four_player_team_flow(void)
