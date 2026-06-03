@@ -76,6 +76,9 @@ The API does not allocate memory. `truco_game` is a plain C struct that callers
 can own directly, place in larger application state, serialize with their own
 format, or reset by calling `truco_game_init`.
 
+For a technical description of the implementation, see
+[`docs/implementation.md`](docs/implementation.md).
+
 ## Table configuration
 
 Use `truco_config_default(&config, player_count)` to start from the standard
