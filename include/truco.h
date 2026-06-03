@@ -8,7 +8,7 @@ extern "C" {
 #endif
 
 #define TRUCO_VERSION_MAJOR 0
-#define TRUCO_VERSION_MINOR 1
+#define TRUCO_VERSION_MINOR 2
 #define TRUCO_VERSION_PATCH 0
 
 #define TRUCO_DECK_SIZE 40u
@@ -16,6 +16,9 @@ extern "C" {
 #define TRUCO_MAX_LEGAL_COMMANDS 12u
 #define TRUCO_MAX_PLAYERS 6u
 #define TRUCO_MAX_TEAMS 2u
+
+#define TRUCO_CONFIG_STORAGE_BYTES 32u
+#define TRUCO_GAME_STORAGE_BYTES 256u
 
 typedef enum truco_status {
     TRUCO_OK = 0,
@@ -67,41 +70,24 @@ typedef struct truco_legal_actions {
 } truco_legal_actions;
 
 typedef struct truco_config {
-    unsigned int player_count;
-    unsigned int target_score;
-    unsigned int seed;
-    unsigned int initial_dealer;
-    unsigned char team_for_player[TRUCO_MAX_PLAYERS];
-    unsigned int flags;
+    unsigned char storage[TRUCO_CONFIG_STORAGE_BYTES];
 } truco_config;
 
 typedef struct truco_game {
-    truco_config config;
-    unsigned int rng_state;
-    unsigned int phase;
-    unsigned int dealer;
-    unsigned int mano;
-    unsigned int current_player;
-    unsigned int trick_leader;
-    unsigned int current_trick;
-    unsigned int truco_value;
-    unsigned int pending_truco_value;
-    int pending_truco_team;
-    int last_truco_team;
-    int envido_pending_team;
-    unsigned int envido_pending_points;
-    int envido_resolved;
-    int last_hand_winner;
-    unsigned int score[TRUCO_MAX_TEAMS];
-    truco_card hands[TRUCO_MAX_PLAYERS][TRUCO_HAND_CARDS];
-    unsigned char played_slots[TRUCO_MAX_PLAYERS][TRUCO_HAND_CARDS];
-    truco_card trick_cards[TRUCO_HAND_CARDS][TRUCO_MAX_PLAYERS];
-    unsigned char trick_played[TRUCO_HAND_CARDS][TRUCO_MAX_PLAYERS];
-    int trick_winner_team[TRUCO_HAND_CARDS];
-    int trick_winner_player[TRUCO_HAND_CARDS];
+    unsigned char storage[TRUCO_GAME_STORAGE_BYTES];
 } truco_game;
 
 void truco_config_default(truco_config *config, unsigned int player_count);
+truco_status truco_config_set_seed(truco_config *config, unsigned int seed);
+truco_status truco_config_set_initial_dealer(truco_config *config,
+                                             unsigned int initial_dealer);
+truco_status truco_config_set_target_score(truco_config *config,
+                                           unsigned int target_score);
+truco_status truco_config_set_team_for_player(truco_config *config,
+                                              unsigned int player,
+                                              unsigned int team);
+unsigned int truco_config_player_count(const truco_config *config);
+
 truco_status truco_game_init(truco_game *game, const truco_config *config);
 
 truco_card truco_make_card(truco_suit suit, unsigned int rank);
@@ -125,9 +111,25 @@ unsigned int truco_game_team_for_player(const truco_game *game,
                                         unsigned int player);
 truco_phase truco_game_phase(const truco_game *game);
 unsigned int truco_game_current_player(const truco_game *game);
+unsigned int truco_game_dealer(const truco_game *game);
+unsigned int truco_game_mano(const truco_game *game);
 unsigned int truco_game_score(const truco_game *game, unsigned int team);
+unsigned int truco_game_target_score(const truco_game *game);
+unsigned int truco_game_truco_value(const truco_game *game);
 int truco_game_hand_winner(const truco_game *game);
 int truco_game_trick_winner(const truco_game *game, unsigned int trick);
+
+truco_status truco_game_hand_card(const truco_game *game,
+                                  unsigned int player,
+                                  unsigned int slot,
+                                  truco_card *out);
+int truco_game_hand_slot_played(const truco_game *game,
+                                unsigned int player,
+                                unsigned int slot);
+
+truco_status truco_game_set_hand(truco_game *game,
+                                 unsigned int player,
+                                 const truco_card cards[TRUCO_HAND_CARDS]);
 
 #ifdef __cplusplus
 }

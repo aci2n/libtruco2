@@ -31,6 +31,8 @@ The public API is declared in `include/truco.h`. It exposes:
   - `TRUCO_MAX_TEAMS`: 2.
 - Value types:
   - `truco_card`
+  - `truco_legal_actions`
+- Opaque storage types:
   - `truco_config`
   - `truco_game`
 - Small enums for status codes, suits, phases, and commands.
@@ -76,22 +78,18 @@ dispatch helpers. This keeps command availability and command execution aligned.
 
 ## Memory and ownership
 
-`truco_game` is a plain struct owned by the embedder:
+`truco_game` is an opaque storage struct owned by the embedder:
 
 ```c
 truco_game game;
 truco_game_init(&game, &config);
 ```
 
-The engine does not allocate memory. Internally, `truco_game` contains fixed
-arrays sized by `TRUCO_MAX_PLAYERS` and `TRUCO_HAND_CARDS`:
-
-- `hands[player][slot]`
-- `played_slots[player][slot]`
-- `trick_cards[trick][player]`
-- `trick_played[trick][player]`
-- `trick_winner_team[trick]`
-- `trick_winner_player[trick]`
+The engine does not allocate memory. Internally, `truco_game` stores fixed
+arrays sized by `TRUCO_MAX_PLAYERS` and `TRUCO_HAND_CARDS`. These fields are
+not exposed in `truco.h`; callers read hands and related state through
+`truco_game_hand_card`, `truco_game_set_hand`, and the other accessor
+functions.
 
 This makes embedding simple for games, servers, bots, tests, and simulations.
 Callers can place `truco_game` inside larger state containers or serialize the
@@ -118,8 +116,8 @@ The default team assignment alternates players by index:
 `player_count == 4`. Six-player games return `TRUCO_ERR_UNSUPPORTED_RULES` so
 the capacity is visible without pretending that 3v3 rule differences are solved.
 
-Callers may customize `config.team_for_player[]` before initialization as long
-as each active player maps to team `0` or `1`.
+Callers may customize team assignment with `truco_config_set_team_for_player`
+before initialization as long as each active player maps to team `0` or `1`.
 
 ## Game phases
 
@@ -287,9 +285,9 @@ Coverage focuses on:
 - 2v2 team assignment and trick flow.
 - Reserved 3v3 capacity returning `TRUCO_ERR_UNSUPPORTED_RULES`.
 
-The tests set hands directly through the public `truco_game` struct where
-deterministic rule scenarios are needed. That keeps test setup out of the
-library's public command API.
+The tests set hands with `truco_game_set_hand` where deterministic rule
+scenarios are needed. That keeps test setup out of the command dispatch path
+while still avoiding direct struct field access.
 
 ## Build artifacts
 

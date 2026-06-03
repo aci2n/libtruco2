@@ -58,7 +58,7 @@ int main(void)
     truco_game game;
 
     truco_config_default(&config, 4);
-    config.seed = 42;
+    truco_config_set_seed(&config, 42);
 
     if (truco_game_init(&game, &config) != TRUCO_OK) {
         return 1;
@@ -72,9 +72,10 @@ int main(void)
 }
 ```
 
-The API does not allocate memory. `truco_game` is a plain C struct that callers
-can own directly, place in larger application state, serialize with their own
-format, or reset by calling `truco_game_init`.
+The API does not allocate memory. `truco_game` and `truco_config` are opaque
+storage structs that callers can own directly on the stack, place in larger
+application state, or reset by calling `truco_game_init`. Internal layout is
+not part of the public ABI; use the accessor functions to read state.
 
 Clients mutate the game by applying scoped commands. They can discover valid
 commands without mutating the game:
@@ -106,7 +107,8 @@ layout:
   `TRUCO_ERR_UNSUPPORTED_RULES` until the special 3v3 rules are implemented.
 
 Teams can be customized before initialization with
-`config.team_for_player[player]`. The current engine supports two teams.
+`truco_config_set_team_for_player(&config, player, team)`. The current engine
+supports two teams.
 
 ## Tests
 

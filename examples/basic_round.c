@@ -26,7 +26,7 @@ int main(void)
     unsigned int slot;
 
     truco_config_default(&config, 4u);
-    config.seed = 42u;
+    truco_config_set_seed(&config, 42u);
 
     if (truco_game_init(&game, &config) != TRUCO_OK ||
         truco_game_apply(&game, 0u, TRUCO_CMD_START_HAND) != TRUCO_OK) {
@@ -37,11 +37,17 @@ int main(void)
     printf("current player: %u\n", truco_game_current_player(&game));
     for (player = 0u; player < truco_game_player_count(&game); ++player) {
         printf("player %u team %u:", player, truco_game_team_for_player(&game, player));
+        truco_card hand[TRUCO_HAND_CARDS];
         for (slot = 0u; slot < TRUCO_HAND_CARDS; ++slot) {
-            truco_card card = game.hands[player][slot];
+            truco_card card;
+            if (truco_game_hand_card(&game, player, slot, &card) != TRUCO_OK) {
+                fprintf(stderr, "could not read hand\n");
+                return 1;
+            }
+            hand[slot] = card;
             printf(" %u-%s", (unsigned int)card.rank, suit_name(card.suit));
         }
-        printf(" envido=%u\n", truco_envido_points(game.hands[player]));
+        printf(" envido=%u\n", truco_envido_points(hand));
     }
 
     return 0;

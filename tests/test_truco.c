@@ -75,8 +75,8 @@ static void start_two_player_hand(truco_game *game)
     truco_config config;
 
     truco_config_default(&config, 2u);
-    config.seed = 7u;
-    config.initial_dealer = 1u;
+    truco_config_set_seed(&config, 7u);
+    truco_config_set_initial_dealer(&config, 1u);
     expect_ok(truco_game_init(game, &config));
     expect_ok(truco_game_apply(game, 0u, TRUCO_CMD_START_HAND));
     CHECK(truco_game_current_player(game) == 0u);
@@ -86,12 +86,7 @@ static void force_hand(truco_game *game,
                        unsigned int player,
                        const truco_card cards[TRUCO_HAND_CARDS])
 {
-    unsigned int slot;
-
-    for (slot = 0u; slot < TRUCO_HAND_CARDS; ++slot) {
-        game->hands[player][slot] = cards[slot];
-        game->played_slots[player][slot] = 0u;
-    }
+    expect_ok(truco_game_set_hand(game, player, cards));
 }
 
 static void install_basic_two_player_hands(truco_game *game)
@@ -167,7 +162,7 @@ static void test_legal_actions(void)
     truco_legal_actions actions;
 
     truco_config_default(&config, 2u);
-    config.initial_dealer = 1u;
+    truco_config_set_initial_dealer(&config, 1u);
     expect_ok(truco_game_init(&game, &config));
 
     expect_ok(truco_game_legal_actions(&game, 0u, &actions));
@@ -302,7 +297,7 @@ static void test_four_player_team_flow(void)
     };
 
     truco_config_default(&config, 4u);
-    config.initial_dealer = 3u;
+    truco_config_set_initial_dealer(&config, 3u);
     expect_ok(truco_game_init(&game, &config));
     expect_ok(truco_game_apply(&game, 0u, TRUCO_CMD_START_HAND));
 
