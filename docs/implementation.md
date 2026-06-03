@@ -16,9 +16,9 @@ The library is intentionally small and conservative:
 - Flexible enough for 2-player and 4-player tables today, with fixed capacity
   for 6 players reserved for future 3v3 rules.
 
-The implementation avoids allocation, callbacks, threads, global mutable state,
-and I/O inside the engine. All game state lives in a caller-owned `truco_game`
-struct.
+The implementation avoids callbacks, threads, global mutable state, and I/O
+inside the engine. Game state lives in a heap-allocated opaque `truco_game`
+created with `truco_game_create` and released with `truco_game_delete`.
 
 ## Public API layout
 
@@ -31,8 +31,9 @@ The public API is declared in `include/truco.h`. It exposes:
   - `TRUCO_MAX_TEAMS`: 2.
 - Value types:
   - `truco_card`
-  - `truco_config`
-  - `truco_game`
+  - `truco_legal_actions`
+- Opaque type:
+  - `truco_game` (forward-declared in the header, defined in `src/truco.c`)
 - Small enums for status codes, suits, phases, and commands.
 - Stateless card/deck helpers.
 - `truco_game_apply`, the only public game mutation entry point.
@@ -76,15 +77,17 @@ dispatch helpers. This keeps command availability and command execution aligned.
 
 ## Memory and ownership
 
-`truco_game` is a plain struct owned by the embedder:
+`truco_game` is opaque and heap-allocated:
 
 ```c
-truco_game game;
-truco_game_init(&game, &config);
+truco_game *game = truco_game_create();
+truco_game_set_player_count(game, 4);
+truco_game_init(game);
+truco_game_delete(game);
 ```
 
-The engine does not allocate memory. Internally, `truco_game` contains fixed
-arrays sized by `TRUCO_MAX_PLAYERS` and `TRUCO_HAND_CARDS`:
+Internally, `struct truco_game` contains fixed arrays sized by
+`TRUCO_MAX_PLAYERS` and `TRUCO_HAND_CARDS`:
 
 - `hands[player][slot]`
 - `played_slots[player][slot]`
@@ -101,11 +104,8 @@ version their own serialized representation.
 
 ## Table configuration
 
-The caller initializes a `truco_config` with:
-
-```c
-truco_config_default(&config, player_count);
-```
+The caller configures the table with setters such as
+`truco_game_set_player_count` before `truco_game_init`:
 
 The default team assignment alternates players by index:
 
