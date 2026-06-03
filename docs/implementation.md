@@ -31,13 +31,14 @@ The public API is declared in `include/truco.h`. It exposes:
   - `TRUCO_MAX_TEAMS`: 2.
 - Value types:
   - `truco_card`
-  - `truco_legal_actions`
 - Opaque type:
   - `truco_game` (forward-declared in the header, defined in `src/truco.c`)
 - Small enums for status codes, suits, phases, and commands.
 - Stateless card/deck helpers.
 - `truco_game_apply`, the only public game mutation entry point.
-- `truco_game_legal_actions`, the non-mutating command discovery API.
+- `truco_game_legal_commands`, the non-mutating command discovery API.
+- Bid metadata getters: `truco_game_pending_truco_value`,
+  `truco_game_pending_envido_points`, `truco_game_next_truco_value`.
 
 The API uses explicit status returns rather than `errno`. Functions return
 `TRUCO_OK` on success or a negative `truco_status` value on failure.
@@ -57,17 +58,17 @@ starting a hand are private helpers inside `src/truco.c`. The public API stays
 small and protocol-like: clients submit a command and the engine validates and
 applies it.
 
-Clients should use `truco_game_legal_actions` to discover valid commands for a
-player before calling `truco_game_apply`. This keeps UIs and bots from
-duplicating engine rules or probing with mutating calls.
+Clients should use `truco_game_legal_commands` to discover valid commands for a
+player before calling `truco_game_apply`. The caller supplies a buffer and
+capacity; the engine writes up to `capacity` entries and sets `count_out` to the
+number written. Pass `capacity == 0` and `commands == NULL` to probe the required
+length. If more commands exist than fit, the function returns
+`TRUCO_ERR_INSUFFICIENT_BUFFER`.
 
-The result is intentionally small:
-
-- `count`: number of legal commands.
-- `commands[]`: exact command values that can be passed to `truco_game_apply`.
-- `truco_value`: the requested Truco value for either a legal raise or a pending
-  Truco response.
-- `envido_points`: the pending Envido points for a legal Envido response.
+Bid labels are not bundled with the command list. Use
+`truco_game_next_truco_value` when raising, `truco_game_pending_truco_value`
+when answering Truco, and `truco_game_pending_envido_points` when answering
+Envido.
 
 The command list makes clients simple: render each command, let the user or bot
 choose one, then pass the chosen enum back to `truco_game_apply`.

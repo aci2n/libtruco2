@@ -24,7 +24,8 @@ typedef enum truco_status {
     TRUCO_ERR_NOT_PLAYERS_TURN = -3,
     TRUCO_ERR_CARD_ALREADY_PLAYED = -4,
     TRUCO_ERR_UNSUPPORTED_RULES = -5,
-    TRUCO_ERR_OUT_OF_MEMORY = -6
+    TRUCO_ERR_OUT_OF_MEMORY = -6,
+    TRUCO_ERR_INSUFFICIENT_BUFFER = -7
 } truco_status;
 
 typedef enum truco_suit {
@@ -60,13 +61,6 @@ typedef struct truco_card {
     unsigned char rank;
 } truco_card;
 
-typedef struct truco_legal_actions {
-    unsigned int count;
-    truco_command commands[TRUCO_MAX_LEGAL_COMMANDS];
-    unsigned int truco_value;
-    unsigned int envido_points;
-} truco_legal_actions;
-
 typedef struct truco_game truco_game;
 
 /* Allocates a game and initializes it with default two-player settings. */
@@ -95,15 +89,20 @@ truco_status truco_shuffle(truco_card *cards, size_t count, unsigned int *seed);
 truco_status truco_game_apply(truco_game *game,
                               unsigned int player,
                               truco_command command);
-truco_status truco_game_legal_actions(const truco_game *game,
-                                      unsigned int player,
-                                      truco_legal_actions *actions);
+truco_status truco_game_legal_commands(const truco_game *game,
+                                       unsigned int player,
+                                       truco_command *commands,
+                                       size_t capacity,
+                                       size_t *count_out);
 
 unsigned int truco_game_player_count(const truco_game *game);
 unsigned int truco_game_team_for_player(const truco_game *game,
                                         unsigned int player);
 truco_phase truco_game_phase(const truco_game *game);
 unsigned int truco_game_current_player(const truco_game *game);
+unsigned int truco_game_pending_truco_value(const truco_game *game);
+unsigned int truco_game_pending_envido_points(const truco_game *game);
+unsigned int truco_game_next_truco_value(const truco_game *game);
 unsigned int truco_game_score(const truco_game *game, unsigned int team);
 int truco_game_hand_winner(const truco_game *game);
 int truco_game_trick_winner(const truco_game *game, unsigned int trick);

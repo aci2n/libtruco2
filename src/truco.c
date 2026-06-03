@@ -945,69 +945,147 @@ truco_status truco_game_apply(truco_game *game,
     }
 }
 
-static void add_legal_command(truco_legal_actions *actions,
-                              truco_command command)
-{
-    if (actions->count < TRUCO_MAX_LEGAL_COMMANDS) {
-        actions->commands[actions->count++] = command;
-    }
-}
-
-truco_status truco_game_legal_actions(const truco_game *game,
-                                      unsigned int player,
-                                      truco_legal_actions *actions)
+static size_t collect_legal_commands(const truco_game *game,
+                                     unsigned int player,
+                                     truco_command *buffer,
+                                     size_t buffer_capacity)
 {
     unsigned int slot;
-
-    if (actions == 0 || !is_valid_player(game, player)) {
-        return TRUCO_ERR_INVALID_ARGUMENT;
-    }
-
-    memset(actions, 0, sizeof(*actions));
+    size_t total = 0u;
 
     if (can_start_hand(game)) {
-        add_legal_command(actions, TRUCO_CMD_START_HAND);
-        return TRUCO_OK;
+        if (total < buffer_capacity) {
+            buffer[total] = TRUCO_CMD_START_HAND;
+        }
+        ++total;
+        return total;
     }
 
     if (game->phase != TRUCO_PHASE_PLAYING) {
-        return TRUCO_OK;
+        return 0u;
     }
 
     for (slot = 0u; slot < TRUCO_HAND_CARDS; ++slot) {
         if (can_play_card(game, player, slot)) {
-            add_legal_command(actions, (truco_command)(TRUCO_CMD_PLAY_CARD_0 + slot));
+            if (total < buffer_capacity) {
+                buffer[total] = (truco_command)(TRUCO_CMD_PLAY_CARD_0 + slot);
+            }
+            ++total;
         }
     }
 
     if (can_raise_truco(game, player)) {
-        add_legal_command(actions, TRUCO_CMD_RAISE_TRUCO);
-        actions->truco_value = next_truco_value(game);
+        if (total < buffer_capacity) {
+            buffer[total] = TRUCO_CMD_RAISE_TRUCO;
+        }
+        ++total;
     }
 
     if (can_answer_truco(game, player)) {
-        add_legal_command(actions, TRUCO_CMD_ACCEPT_BID);
-        add_legal_command(actions, TRUCO_CMD_REJECT_BID);
-        actions->truco_value = game->pending_truco_value;
+        if (total < buffer_capacity) {
+            buffer[total] = TRUCO_CMD_ACCEPT_BID;
+        }
+        ++total;
+        if (total < buffer_capacity) {
+            buffer[total] = TRUCO_CMD_REJECT_BID;
+        }
+        ++total;
     }
 
     if (can_call_envido(game, player, ENVIDO)) {
-        add_legal_command(actions, TRUCO_CMD_CALL_ENVIDO);
+        if (total < buffer_capacity) {
+            buffer[total] = TRUCO_CMD_CALL_ENVIDO;
+        }
+        ++total;
     }
     if (can_call_envido(game, player, REAL_ENVIDO)) {
-        add_legal_command(actions, TRUCO_CMD_CALL_REAL_ENVIDO);
+        if (total < buffer_capacity) {
+            buffer[total] = TRUCO_CMD_CALL_REAL_ENVIDO;
+        }
+        ++total;
     }
     if (can_call_envido(game, player, FALTA_ENVIDO)) {
-        add_legal_command(actions, TRUCO_CMD_CALL_FALTA_ENVIDO);
+        if (total < buffer_capacity) {
+            buffer[total] = TRUCO_CMD_CALL_FALTA_ENVIDO;
+        }
+        ++total;
     }
 
     if (can_answer_envido(game, player)) {
-        add_legal_command(actions, TRUCO_CMD_ACCEPT_BID);
-        add_legal_command(actions, TRUCO_CMD_REJECT_BID);
-        actions->envido_points = game->envido_pending_points;
+        if (total < buffer_capacity) {
+            buffer[total] = TRUCO_CMD_ACCEPT_BID;
+        }
+        ++total;
+        if (total < buffer_capacity) {
+            buffer[total] = TRUCO_CMD_REJECT_BID;
+        }
+        ++total;
+    }
+
+    return total;
+}
+
+truco_status truco_game_legal_commands(const truco_game *game,
+                                       unsigned int player,
+                                       truco_command *commands,
+                                       size_t capacity,
+                                       size_t *count_out)
+{
+    truco_command scratch[TRUCO_MAX_LEGAL_COMMANDS];
+    size_t total;
+    size_t written;
+    size_t index;
+
+    if (count_out == 0 || !is_valid_player(game, player)) {
+        return TRUCO_ERR_INVALID_ARGUMENT;
+    }
+
+    if (capacity > 0u && commands == 0) {
+        return TRUCO_ERR_INVALID_ARGUMENT;
+    }
+
+    total = collect_legal_commands(game, player, scratch, TRUCO_MAX_LEGAL_COMMANDS);
+
+    if (capacity == 0u) {
+        *count_out = total;
+        return TRUCO_OK;
+    }
+
+    written = total < capacity ? total : capacity;
+    for (index = 0u; index < written; ++index) {
+        commands[index] = scratch[index];
+    }
+    *count_out = written;
+
+    if (total > capacity) {
+        return TRUCO_ERR_INSUFFICIENT_BUFFER;
     }
 
     return TRUCO_OK;
+}
+
+unsigned int truco_game_pending_truco_value(const truco_game *game)
+{
+    if (game == 0 || game->pending_truco_value == 0u) {
+        return 0u;
+    }
+    return game->pending_truco_value;
+}
+
+unsigned int truco_game_pending_envido_points(const truco_game *game)
+{
+    if (game == 0 || game->envido_pending_team < 0) {
+        return 0u;
+    }
+    return game->envido_pending_points;
+}
+
+unsigned int truco_game_next_truco_value(const truco_game *game)
+{
+    if (game == 0) {
+        return 0u;
+    }
+    return next_truco_value(game);
 }
 
 unsigned int truco_game_player_count(const truco_game *game)
