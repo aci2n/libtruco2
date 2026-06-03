@@ -54,42 +54,48 @@ Include `truco.h` and link either the static or shared library.
 
 int main(void)
 {
-    truco_config config;
-    truco_game game;
+    truco_game *game = truco_game_create();
 
-    truco_config_default(&config, 4);
-    config.seed = 42;
-
-    if (truco_game_init(&game, &config) != TRUCO_OK) {
+    if (game == 0) {
         return 1;
     }
 
-    if (truco_game_apply(&game, 0, TRUCO_CMD_START_HAND) != TRUCO_OK) {
+    if (truco_game_set_player_count(game, 4) != TRUCO_OK ||
+        truco_game_set_seed(game, 42) != TRUCO_OK ||
+        truco_game_init(game) != TRUCO_OK) {
+        truco_game_delete(game);
         return 1;
     }
 
+    if (truco_game_apply(game, 0, TRUCO_CMD_START_HAND) != TRUCO_OK) {
+        truco_game_delete(game);
+        return 1;
+    }
+
+    truco_game_delete(game);
     return 0;
 }
 ```
 
-The API does not allocate memory. `truco_game` is a plain C struct that callers
-can own directly, place in larger application state, serialize with their own
-format, or reset by calling `truco_game_init`.
+`truco_game` is an opaque type. `truco_game_create` allocates a game and
+initializes it with default two-player settings. Adjust the table with
+`truco_game_set_*`, then call `truco_game_init` to apply those settings and
+reset scores and runtime state. Call `truco_game_delete` when finished.
 
 Clients mutate the game by applying scoped commands. They can discover valid
 commands without mutating the game:
 
 ```c
-truco_legal_actions actions;
+truco_legal_commands legal;
 
-if (truco_game_legal_actions(&game, player, &actions) == TRUCO_OK) {
-    for (unsigned int i = 0; i < actions.count; ++i) {
-        render_button(actions.commands[i]);
+if (truco_game_legal_commands(game, player, &legal) == TRUCO_OK) {
+    for (size_t i = 0; i < legal.count; ++i) {
+        render_button(legal.commands[i]);
     }
 }
 
-/* Apply a command selected from the legal command list. */
-truco_game_apply(&game, player, actions.commands[selected]);
+/* Bid labels come from separate getters, e.g. truco_game_pending_truco_value. */
+truco_game_apply(game, player, legal.commands[selected]);
 ```
 
 For a technical description of the implementation, see
@@ -97,16 +103,21 @@ For a technical description of the implementation, see
 
 ## Table configuration
 
-Use `truco_config_default(&config, player_count)` to start from the standard
-layout:
+After `truco_game_create`, configure the table with setters and call
+`truco_game_init` to apply them (or to reset an in-progress game):
 
-- `player_count = 2`: players 0 and 1 are opposing teams.
-- `player_count = 4`: players 0/2 vs. 1/3.
-- `player_count = 6`: reserved capacity; initialization returns
-  `TRUCO_ERR_UNSUPPORTED_RULES` until the special 3v3 rules are implemented.
+- `truco_game_set_player_count(game, 2)`: players 0 and 1 are opposing teams.
+- `truco_game_set_player_count(game, 4)`: players 0/2 vs. 1/3 by default.
+- `truco_game_set_player_count(game, 6)`: reserved capacity; `truco_game_init`
+  returns `TRUCO_ERR_UNSUPPORTED_RULES` until the special 3v3 rules are
+  implemented.
 
-Teams can be customized before initialization with
-`config.team_for_player[player]`. The current engine supports two teams.
+Optional setters:
+
+- `truco_game_set_target_score` (default 30)
+- `truco_game_set_seed` (default 1)
+- `truco_game_set_initial_dealer` (default last seat)
+- `truco_game_set_team_for_player` for custom team layouts
 
 ## Tests
 

@@ -16,9 +16,9 @@ The library is intentionally small and conservative:
 - Flexible enough for 2-player and 4-player tables today, with fixed capacity
   for 6 players reserved for future 3v3 rules.
 
-The implementation avoids allocation, callbacks, threads, global mutable state,
-and I/O inside the engine. All game state lives in a caller-owned `truco_game`
-struct.
+The implementation avoids callbacks, threads, global mutable state, and I/O
+inside the engine. Game state lives in a heap-allocated opaque `truco_game`
+created with `truco_game_create` and released with `truco_game_delete`.
 
 ## Public API layout
 
@@ -31,12 +31,15 @@ The public API is declared in `include/truco.h`. It exposes:
   - `TRUCO_MAX_TEAMS`: 2.
 - Value types:
   - `truco_card`
-  - `truco_config`
-  - `truco_game`
+  - `truco_legal_commands`
+- Opaque type:
+  - `truco_game` (forward-declared in the header, defined in `src/truco.c`)
 - Small enums for status codes, suits, phases, and commands.
 - Stateless card/deck helpers.
 - `truco_game_apply`, the only public game mutation entry point.
-- `truco_game_legal_actions`, the non-mutating command discovery API.
+- `truco_game_legal_commands`, the non-mutating command discovery API.
+- Bid metadata getters: `truco_game_pending_truco_value`,
+  `truco_game_pending_envido_points`, `truco_game_next_truco_value`.
 
 The API uses explicit status returns rather than `errno`. Functions return
 `TRUCO_OK` on success or a negative `truco_status` value on failure.
@@ -56,17 +59,15 @@ starting a hand are private helpers inside `src/truco.c`. The public API stays
 small and protocol-like: clients submit a command and the engine validates and
 applies it.
 
-Clients should use `truco_game_legal_actions` to discover valid commands for a
-player before calling `truco_game_apply`. This keeps UIs and bots from
-duplicating engine rules or probing with mutating calls.
+Clients should use `truco_game_legal_commands` to discover valid commands for a
+player before calling `truco_game_apply`. The caller allocates a
+`truco_legal_commands` value (typically on the stack) and passes a pointer; the
+engine fills `count` and `commands[]` up to `TRUCO_MAX_LEGAL_COMMANDS`.
 
-The result is intentionally small:
-
-- `count`: number of legal commands.
-- `commands[]`: exact command values that can be passed to `truco_game_apply`.
-- `truco_value`: the requested Truco value for either a legal raise or a pending
-  Truco response.
-- `envido_points`: the pending Envido points for a legal Envido response.
+Bid labels are not bundled with the command list. Use
+`truco_game_next_truco_value` when raising, `truco_game_pending_truco_value`
+when answering Truco, and `truco_game_pending_envido_points` when answering
+Envido.
 
 The command list makes clients simple: render each command, let the user or bot
 choose one, then pass the chosen enum back to `truco_game_apply`.
@@ -76,15 +77,18 @@ dispatch helpers. This keeps command availability and command execution aligned.
 
 ## Memory and ownership
 
-`truco_game` is a plain struct owned by the embedder:
+`truco_game` is opaque and heap-allocated. `truco_game_create` initializes the
+object; `truco_game_init` is the public reset entry point:
 
 ```c
-truco_game game;
-truco_game_init(&game, &config);
+truco_game *game = truco_game_create();
+truco_game_set_player_count(game, 4);
+truco_game_init(game);
+truco_game_delete(game);
 ```
 
-The engine does not allocate memory. Internally, `truco_game` contains fixed
-arrays sized by `TRUCO_MAX_PLAYERS` and `TRUCO_HAND_CARDS`:
+Internally, `struct truco_game` contains fixed arrays sized by
+`TRUCO_MAX_PLAYERS` and `TRUCO_HAND_CARDS`:
 
 - `hands[player][slot]`
 - `played_slots[player][slot]`
@@ -101,11 +105,8 @@ version their own serialized representation.
 
 ## Table configuration
 
-The caller initializes a `truco_config` with:
-
-```c
-truco_config_default(&config, player_count);
-```
+The caller configures the table with setters such as
+`truco_game_set_player_count` before `truco_game_init`:
 
 The default team assignment alternates players by index:
 
