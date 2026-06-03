@@ -86,18 +86,16 @@ Clients mutate the game by applying scoped commands. They can discover valid
 commands without mutating the game:
 
 ```c
-truco_command commands[TRUCO_MAX_LEGAL_COMMANDS];
-size_t count;
+truco_legal_commands legal;
 
-if (truco_game_legal_commands(game, player, commands,
-                              TRUCO_MAX_LEGAL_COMMANDS, &count) == TRUCO_OK) {
-    for (size_t i = 0; i < count; ++i) {
-        render_button(commands[i]);
+if (truco_game_legal_commands(game, player, &legal) == TRUCO_OK) {
+    for (size_t i = 0; i < legal.count; ++i) {
+        render_button(legal.commands[i]);
     }
 }
 
 /* Bid labels come from separate getters, e.g. truco_game_pending_truco_value. */
-truco_game_apply(game, player, commands[selected]);
+truco_game_apply(game, player, legal.commands[selected]);
 ```
 
 For a technical description of the implementation, see

@@ -19,31 +19,17 @@ static void expect_ok(truco_status status)
     CHECK(status == TRUCO_OK);
 }
 
-static int has_command(const truco_command *commands,
-                       size_t count,
-                       truco_command command)
+static int has_command(const truco_legal_commands *legal, truco_command command)
 {
     size_t index;
 
-    for (index = 0u; index < count; ++index) {
-        if (commands[index] == command) {
+    for (index = 0u; index < legal->count; ++index) {
+        if (legal->commands[index] == command) {
             return 1;
         }
     }
 
     return 0;
-}
-
-static void expect_legal_commands(truco_game *game,
-                                  unsigned int player,
-                                  truco_command *commands,
-                                  size_t *count_out)
-{
-    expect_ok(truco_game_legal_commands(game,
-                                        player,
-                                        commands,
-                                        TRUCO_MAX_LEGAL_COMMANDS,
-                                        count_out));
 }
 
 static truco_game *create_two_player_game(void)
@@ -177,60 +163,59 @@ static void test_truco_bidding(void)
 static void test_legal_actions(void)
 {
     truco_game *game = truco_game_create();
-    truco_command commands[TRUCO_MAX_LEGAL_COMMANDS];
-    size_t count;
+    truco_legal_commands legal;
 
     CHECK(game != 0);
     expect_ok(truco_game_set_player_count(game, 2u));
     expect_ok(truco_game_set_initial_dealer(game, 1u));
     expect_ok(truco_game_init(game));
 
-    expect_legal_commands(game, 0u, commands, &count);
-    CHECK(count == 1u);
-    CHECK(commands[0] == TRUCO_CMD_START_HAND);
+    expect_ok(truco_game_legal_commands(game, 0u, &legal));
+    CHECK(legal.count == 1u);
+    CHECK(legal.commands[0] == TRUCO_CMD_START_HAND);
 
     expect_ok(truco_game_apply(game, 0u, TRUCO_CMD_START_HAND));
     install_basic_two_player_hands(game);
 
-    expect_legal_commands(game, 0u, commands, &count);
-    CHECK(has_command(commands, count, TRUCO_CMD_PLAY_CARD_0));
-    CHECK(has_command(commands, count, TRUCO_CMD_PLAY_CARD_1));
-    CHECK(has_command(commands, count, TRUCO_CMD_PLAY_CARD_2));
-    CHECK(has_command(commands, count, TRUCO_CMD_RAISE_TRUCO));
-    CHECK(has_command(commands, count, TRUCO_CMD_CALL_ENVIDO));
-    CHECK(has_command(commands, count, TRUCO_CMD_CALL_REAL_ENVIDO));
-    CHECK(has_command(commands, count, TRUCO_CMD_CALL_FALTA_ENVIDO));
+    expect_ok(truco_game_legal_commands(game, 0u, &legal));
+    CHECK(has_command(&legal, TRUCO_CMD_PLAY_CARD_0));
+    CHECK(has_command(&legal, TRUCO_CMD_PLAY_CARD_1));
+    CHECK(has_command(&legal, TRUCO_CMD_PLAY_CARD_2));
+    CHECK(has_command(&legal, TRUCO_CMD_RAISE_TRUCO));
+    CHECK(has_command(&legal, TRUCO_CMD_CALL_ENVIDO));
+    CHECK(has_command(&legal, TRUCO_CMD_CALL_REAL_ENVIDO));
+    CHECK(has_command(&legal, TRUCO_CMD_CALL_FALTA_ENVIDO));
     CHECK(truco_game_next_truco_value(game) == 2u);
 
     expect_ok(truco_game_apply(game, 0u, TRUCO_CMD_RAISE_TRUCO));
-    expect_legal_commands(game, 0u, commands, &count);
-    CHECK(count == 0u);
+    expect_ok(truco_game_legal_commands(game, 0u, &legal));
+    CHECK(legal.count == 0u);
 
-    expect_legal_commands(game, 1u, commands, &count);
-    CHECK(has_command(commands, count, TRUCO_CMD_ACCEPT_BID));
-    CHECK(has_command(commands, count, TRUCO_CMD_REJECT_BID));
-    CHECK(!has_command(commands, count, TRUCO_CMD_PLAY_CARD_0));
-    CHECK(!has_command(commands, count, TRUCO_CMD_CALL_ENVIDO));
+    expect_ok(truco_game_legal_commands(game, 1u, &legal));
+    CHECK(has_command(&legal, TRUCO_CMD_ACCEPT_BID));
+    CHECK(has_command(&legal, TRUCO_CMD_REJECT_BID));
+    CHECK(!has_command(&legal, TRUCO_CMD_PLAY_CARD_0));
+    CHECK(!has_command(&legal, TRUCO_CMD_CALL_ENVIDO));
     CHECK(truco_game_pending_truco_value(game) == 2u);
     CHECK(truco_game_apply(game, 1u, TRUCO_CMD_CALL_ENVIDO) == TRUCO_ERR_INVALID_STATE);
 
     expect_ok(truco_game_apply(game, 1u, TRUCO_CMD_ACCEPT_BID));
     expect_ok(truco_game_apply(game, 0u, TRUCO_CMD_PLAY_CARD_0));
-    expect_legal_commands(game, 1u, commands, &count);
-    CHECK(has_command(commands, count, TRUCO_CMD_PLAY_CARD_0));
-    CHECK(has_command(commands, count, TRUCO_CMD_PLAY_CARD_1));
-    CHECK(has_command(commands, count, TRUCO_CMD_PLAY_CARD_2));
-    CHECK(has_command(commands, count, TRUCO_CMD_RAISE_TRUCO));
-    CHECK(!has_command(commands, count, TRUCO_CMD_CALL_ENVIDO));
+    expect_ok(truco_game_legal_commands(game, 1u, &legal));
+    CHECK(has_command(&legal, TRUCO_CMD_PLAY_CARD_0));
+    CHECK(has_command(&legal, TRUCO_CMD_PLAY_CARD_1));
+    CHECK(has_command(&legal, TRUCO_CMD_PLAY_CARD_2));
+    CHECK(has_command(&legal, TRUCO_CMD_RAISE_TRUCO));
+    CHECK(!has_command(&legal, TRUCO_CMD_CALL_ENVIDO));
     CHECK(truco_game_next_truco_value(game) == 3u);
 
     expect_ok(truco_game_init(game));
     start_two_player_hand(game);
     expect_ok(truco_game_apply(game, 0u, TRUCO_CMD_CALL_ENVIDO));
-    expect_legal_commands(game, 1u, commands, &count);
-    CHECK(has_command(commands, count, TRUCO_CMD_ACCEPT_BID));
-    CHECK(has_command(commands, count, TRUCO_CMD_REJECT_BID));
-    CHECK(!has_command(commands, count, TRUCO_CMD_RAISE_TRUCO));
+    expect_ok(truco_game_legal_commands(game, 1u, &legal));
+    CHECK(has_command(&legal, TRUCO_CMD_ACCEPT_BID));
+    CHECK(has_command(&legal, TRUCO_CMD_REJECT_BID));
+    CHECK(!has_command(&legal, TRUCO_CMD_RAISE_TRUCO));
     CHECK(truco_game_pending_envido_points(game) == 2u);
     CHECK(truco_game_apply(game, 1u, TRUCO_CMD_RAISE_TRUCO) == TRUCO_ERR_INVALID_STATE);
 

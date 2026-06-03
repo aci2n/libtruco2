@@ -24,8 +24,7 @@ typedef enum truco_status {
     TRUCO_ERR_NOT_PLAYERS_TURN = -3,
     TRUCO_ERR_CARD_ALREADY_PLAYED = -4,
     TRUCO_ERR_UNSUPPORTED_RULES = -5,
-    TRUCO_ERR_OUT_OF_MEMORY = -6,
-    TRUCO_ERR_INSUFFICIENT_BUFFER = -7
+    TRUCO_ERR_OUT_OF_MEMORY = -6
 } truco_status;
 
 typedef enum truco_suit {
@@ -61,6 +60,11 @@ typedef struct truco_card {
     unsigned char rank;
 } truco_card;
 
+typedef struct truco_legal_commands {
+    size_t count;
+    truco_command commands[TRUCO_MAX_LEGAL_COMMANDS];
+} truco_legal_commands;
+
 typedef struct truco_game truco_game;
 
 /* Allocates a game and initializes it with default two-player settings. */
@@ -91,9 +95,7 @@ truco_status truco_game_apply(truco_game *game,
                               truco_command command);
 truco_status truco_game_legal_commands(const truco_game *game,
                                        unsigned int player,
-                                       truco_command *commands,
-                                       size_t capacity,
-                                       size_t *count_out);
+                                       truco_legal_commands *out);
 
 unsigned int truco_game_player_count(const truco_game *game);
 unsigned int truco_game_team_for_player(const truco_game *game,

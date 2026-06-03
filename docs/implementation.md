@@ -31,6 +31,7 @@ The public API is declared in `include/truco.h`. It exposes:
   - `TRUCO_MAX_TEAMS`: 2.
 - Value types:
   - `truco_card`
+  - `truco_legal_commands`
 - Opaque type:
   - `truco_game` (forward-declared in the header, defined in `src/truco.c`)
 - Small enums for status codes, suits, phases, and commands.
@@ -59,11 +60,9 @@ small and protocol-like: clients submit a command and the engine validates and
 applies it.
 
 Clients should use `truco_game_legal_commands` to discover valid commands for a
-player before calling `truco_game_apply`. The caller supplies a buffer and
-capacity; the engine writes up to `capacity` entries and sets `count_out` to the
-number written. Pass `capacity == 0` and `commands == NULL` to probe the required
-length. If more commands exist than fit, the function returns
-`TRUCO_ERR_INSUFFICIENT_BUFFER`.
+player before calling `truco_game_apply`. The caller allocates a
+`truco_legal_commands` value (typically on the stack) and passes a pointer; the
+engine fills `count` and `commands[]` up to `TRUCO_MAX_LEGAL_COMMANDS`.
 
 Bid labels are not bundled with the command list. Use
 `truco_game_next_truco_value` when raising, `truco_game_pending_truco_value`
