@@ -540,7 +540,7 @@ truco_card truco_make_card(truco_suit suit, unsigned int rank)
 {
     truco_card card;
 
-    card.suit = (unsigned char)suit;
+    card.suit = suit;
     card.rank = (unsigned char)rank;
     return card;
 }

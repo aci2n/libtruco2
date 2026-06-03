@@ -3,7 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-static const char *suit_name(unsigned int suit)
+static const char *suit_name(truco_suit suit)
 {
     switch (suit) {
     case TRUCO_SUIT_ESPADA:

@@ -56,7 +56,7 @@ typedef enum truco_command {
 } truco_command;
 
 typedef struct truco_card {
-    unsigned char suit;
+    truco_suit suit;
     unsigned char rank;
 } truco_card;
 

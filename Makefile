@@ -9,7 +9,19 @@ LIBDIR ?= $(PREFIX)/lib
 INCLUDEDIR ?= $(PREFIX)/include
 
 CPPFLAGS ?= -Iinclude
-CFLAGS ?= -std=c99 -Wall -Wextra -Wpedantic -O2 -fPIC
+
+BASE_CFLAGS := -std=c99 -Wall -Wextra -Wpedantic -fPIC
+DEBUG_CFLAGS := -g -O0 -DDEBUG=1
+RELEASE_CFLAGS := -O2
+
+DEBUG ?= 1
+
+ifeq ($(DEBUG),1)
+CFLAGS ?= $(BASE_CFLAGS) $(DEBUG_CFLAGS)
+else
+CFLAGS ?= $(BASE_CFLAGS) $(RELEASE_CFLAGS)
+endif
+
 LDFLAGS ?=
 
 LIB_NAME := truco
