@@ -40,6 +40,32 @@ The public API is declared in `include/truco.h`. It exposes:
 The API uses explicit status returns rather than `errno`. Functions return
 `TRUCO_OK` on success or a negative `truco_status` value on failure.
 
+## Legal action discovery
+
+Clients should use `truco_game_legal_actions` to discover valid commands for a
+player. This keeps UIs and bots from duplicating engine rules or probing by
+calling mutating functions.
+
+The result is intentionally small:
+
+- `flags`: a bitmask of generic commands such as `TRUCO_ACTION_PLAY_CARD`,
+  `TRUCO_ACTION_RAISE_TRUCO`, or `TRUCO_ACTION_ACCEPT_ENVIDO`.
+- `playable_cards[3]`: per-slot markers used when `TRUCO_ACTION_PLAY_CARD` is
+  present.
+- `envido_options`: a bitmask of callable Envido variants used when
+  `TRUCO_ACTION_CALL_ENVIDO` is present.
+- `truco_value`: the requested Truco value for either a legal raise or a pending
+  Truco response.
+- `envido_points`: the pending Envido points for a legal Envido response.
+
+The API is deliberately a single query function rather than many `can_*`
+functions. Clients get all currently useful command data in one call while the
+engine remains free to add more flags or detail fields later.
+
+Internally, legal action discovery uses the same `can_*` predicates as the
+mutating command functions. This keeps command availability and command
+execution aligned.
+
 ## Memory and ownership
 
 `truco_game` is a plain struct owned by the embedder:
@@ -246,6 +272,7 @@ Coverage focuses on:
 - Truco raise/accept/decline behavior.
 - Parda/tied-trick behavior.
 - Envido accept/decline behavior.
+- Legal action discovery for ready, playing, pending bid, and post-card states.
 - 2v2 team assignment and trick flow.
 - Reserved 3v3 capacity returning `TRUCO_ERR_UNSUPPORTED_RULES`.
 

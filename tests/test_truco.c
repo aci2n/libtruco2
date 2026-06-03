@@ -135,6 +135,68 @@ static void test_truco_bidding(void)
     CHECK(truco_game_score(&game, 0u) == 1u);
 }
 
+static void test_legal_actions(void)
+{
+    truco_config config;
+    truco_game game;
+    truco_legal_actions actions;
+
+    truco_config_default(&config, 2u);
+    config.initial_dealer = 1u;
+    expect_ok(truco_game_init(&game, &config));
+
+    expect_ok(truco_game_legal_actions(&game, 0u, &actions));
+    CHECK((actions.flags & TRUCO_ACTION_START_HAND) != 0u);
+    CHECK(actions.flags == TRUCO_ACTION_START_HAND);
+
+    expect_ok(truco_game_start_hand(&game));
+    install_basic_two_player_hands(&game);
+
+    expect_ok(truco_game_legal_actions(&game, 0u, &actions));
+    CHECK((actions.flags & TRUCO_ACTION_PLAY_CARD) != 0u);
+    CHECK((actions.flags & TRUCO_ACTION_RAISE_TRUCO) != 0u);
+    CHECK((actions.flags & TRUCO_ACTION_CALL_ENVIDO) != 0u);
+    CHECK(actions.playable_cards[0] == 1u);
+    CHECK(actions.playable_cards[1] == 1u);
+    CHECK(actions.playable_cards[2] == 1u);
+    CHECK(actions.truco_value == 2u);
+    CHECK((actions.envido_options & TRUCO_ENVIDO_OPTION_ENVIDO) != 0u);
+    CHECK((actions.envido_options & TRUCO_ENVIDO_OPTION_REAL_ENVIDO) != 0u);
+    CHECK((actions.envido_options & TRUCO_ENVIDO_OPTION_FALTA_ENVIDO) != 0u);
+
+    expect_ok(truco_game_raise_truco(&game, 0u));
+    expect_ok(truco_game_legal_actions(&game, 0u, &actions));
+    CHECK(actions.flags == TRUCO_ACTION_NONE);
+
+    expect_ok(truco_game_legal_actions(&game, 1u, &actions));
+    CHECK((actions.flags & TRUCO_ACTION_ACCEPT_TRUCO) != 0u);
+    CHECK((actions.flags & TRUCO_ACTION_DECLINE_TRUCO) != 0u);
+    CHECK((actions.flags & TRUCO_ACTION_PLAY_CARD) == 0u);
+    CHECK((actions.flags & TRUCO_ACTION_CALL_ENVIDO) == 0u);
+    CHECK(actions.truco_value == 2u);
+    CHECK(truco_game_call_envido(&game, 1u, TRUCO_ENVIDO) == TRUCO_ERR_INVALID_STATE);
+
+    expect_ok(truco_game_accept_truco(&game, 1u));
+    expect_ok(truco_game_play_card(&game, 0u, 0u));
+    expect_ok(truco_game_legal_actions(&game, 1u, &actions));
+    CHECK((actions.flags & TRUCO_ACTION_PLAY_CARD) != 0u);
+    CHECK((actions.flags & TRUCO_ACTION_RAISE_TRUCO) != 0u);
+    CHECK((actions.flags & TRUCO_ACTION_CALL_ENVIDO) == 0u);
+    CHECK(actions.playable_cards[0] == 1u);
+    CHECK(actions.playable_cards[1] == 1u);
+    CHECK(actions.playable_cards[2] == 1u);
+    CHECK(actions.truco_value == 3u);
+
+    start_two_player_hand(&game);
+    expect_ok(truco_game_call_envido(&game, 0u, TRUCO_ENVIDO));
+    expect_ok(truco_game_legal_actions(&game, 1u, &actions));
+    CHECK((actions.flags & TRUCO_ACTION_ACCEPT_ENVIDO) != 0u);
+    CHECK((actions.flags & TRUCO_ACTION_DECLINE_ENVIDO) != 0u);
+    CHECK((actions.flags & TRUCO_ACTION_RAISE_TRUCO) == 0u);
+    CHECK(actions.envido_points == 2u);
+    CHECK(truco_game_raise_truco(&game, 1u) == TRUCO_ERR_INVALID_STATE);
+}
+
 static void test_parda_rules(void)
 {
     truco_game game;
@@ -257,6 +319,7 @@ int main(void)
     test_deck_and_envido_values();
     test_two_player_hand_resolution();
     test_truco_bidding();
+    test_legal_actions();
     test_parda_rules();
     test_envido_resolution();
     test_four_player_team_flow();

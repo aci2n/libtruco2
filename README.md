@@ -76,6 +76,22 @@ The API does not allocate memory. `truco_game` is a plain C struct that callers
 can own directly, place in larger application state, serialize with their own
 format, or reset by calling `truco_game_init`.
 
+Clients can discover valid commands without mutating the game:
+
+```c
+truco_legal_actions actions;
+
+if (truco_game_legal_actions(&game, player, &actions) == TRUCO_OK) {
+    if (actions.flags & TRUCO_ACTION_PLAY_CARD) {
+        /* actions.playable_cards[0..2] marks the playable hand slots. */
+    }
+
+    if (actions.flags & TRUCO_ACTION_RAISE_TRUCO) {
+        /* actions.truco_value is the value requested by the raise. */
+    }
+}
+```
+
 For a technical description of the implementation, see
 [`docs/implementation.md`](docs/implementation.md).
 
