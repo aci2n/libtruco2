@@ -33,8 +33,7 @@ int main(void)
 
     if (truco_game_set_player_count(game, 4u) != TRUCO_OK ||
         truco_game_set_seed(game, 42u) != TRUCO_OK ||
-        truco_apply_status(truco_game_apply(game, 3u, TRUCO_CMD_START_HAND)) !=
-            TRUCO_OK) {
+        truco_game_apply(game, 3u, TRUCO_CMD_START_HAND) != TRUCO_OK) {
         fprintf(stderr, "could not start truco game\n");
         truco_game_delete(&game);
         return 1;

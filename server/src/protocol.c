@@ -341,7 +341,7 @@ int truco_server_apply_command(struct truco_server_session *session,
         return -1;
     }
 
-    status = truco_game_apply(game, player, legal.commands[command_index - 1u]).status;
+    status = truco_game_apply(game, player, legal.commands[command_index - 1u]);
     response[0] = '\0';
     if (status != TRUCO_OK) {
         if (append_printf(response, response_size, &offset, "error: %s\r\n",

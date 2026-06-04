@@ -29,8 +29,8 @@ BUILD_DIR := build
 LIB_DIR := lib
 STATIC_LIB := $(LIB_DIR)/lib$(LIB_NAME).a
 SHARED_LIB := $(LIB_DIR)/lib$(LIB_NAME).so
-SRC := src/truco_cards.c src/truco_event.c src/truco_hand.c src/truco_game.c
-OBJ := $(BUILD_DIR)/truco_cards.o $(BUILD_DIR)/truco_event.o $(BUILD_DIR)/truco_hand.o $(BUILD_DIR)/truco_game.o
+SRC := src/truco_cards.c src/truco_hand.c src/truco_game.c
+OBJ := $(BUILD_DIR)/truco_cards.o $(BUILD_DIR)/truco_hand.o $(BUILD_DIR)/truco_game.o
 TEST_BIN := $(BUILD_DIR)/test_truco
 EXAMPLE_BIN := $(BUILD_DIR)/basic_round
 
@@ -41,10 +41,6 @@ all: $(STATIC_LIB) $(SHARED_LIB)
 $(BUILD_DIR)/truco_cards.o: src/truco_cards.c include/truco.h include/truco_internal.h
 	$(MKDIR_P) $(BUILD_DIR)
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c src/truco_cards.c -o $@
-
-$(BUILD_DIR)/truco_event.o: src/truco_event.c src/truco_hand_internal.h include/truco.h include/truco_internal.h
-	$(MKDIR_P) $(BUILD_DIR)
-	$(CC) $(CPPFLAGS) $(CFLAGS) -c src/truco_event.c -o $@
 
 $(BUILD_DIR)/truco_hand.o: src/truco_hand.c src/truco_hand_internal.h include/truco.h include/truco_internal.h
 	$(MKDIR_P) $(BUILD_DIR)

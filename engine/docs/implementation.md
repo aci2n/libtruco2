@@ -58,25 +58,21 @@ The API uses explicit status returns rather than `errno`. Functions return
 Clients mutate game state with scoped `truco_command` values:
 
 ```c
-truco_apply_result result =
+truco_status status =
     truco_game_apply(&game, player, TRUCO_CMD_PLAY_CARD_0);
-if (result.status != TRUCO_OK) { /* handle error */ }
-for (size_t i = 0; i < result.event_count; ++i) {
-    /* react to result.events[i] (UI, logging, replay) */
-}
+if (status != TRUCO_OK) { /* handle error */ }
 ```
 
 The engine is split into modules:
 
 - `src/truco_cards.c` — deck construction, shuffle, card ranking, envido/flor points
 - `src/truco_hand.c` — hand rules (`truco_hand_apply`, legality, tricks, bids)
-- `src/truco_event.c` — event log helpers
 - `src/truco_game.c` — match lifecycle, configuration, public getters
 
-`truco_game_apply` is the reducer entry point: it runs `truco_hand_apply`, copies
-emitted `truco_event` values into `truco_apply_result`, and returns both status
-and events. Hand state lives in nested `truco_hand`; match fields (scores, dealer,
-phase) stay on `truco_game`.
+`truco_game_apply` delegates to `truco_hand_apply` and returns `truco_status`.
+Hand state lives in nested `truco_hand`; match fields (scores, dealer, phase)
+stay on `truco_game`. Each `truco_game` is independent (safe for multiple
+concurrent games in one process).
 
 Clients should use `truco_game_legal_commands` to discover valid commands for a
 player before calling `truco_game_apply`. The caller allocates a

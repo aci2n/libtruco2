@@ -154,25 +154,15 @@ truco_status truco_game_set_flor_enabled(truco_game *game, int enabled)
     return TRUCO_OK;
 }
 
-truco_apply_result truco_game_apply(truco_game *game,
-                                    unsigned int player,
-                                    truco_command command)
+truco_status truco_game_apply(truco_game *game,
+                              unsigned int player,
+                              truco_command command)
 {
-    truco_apply_result result;
-    truco_event_log log;
-
-    result.status = TRUCO_ERR_INVALID_ARGUMENT;
-    result.event_count = 0u;
-
     if (game == 0) {
-        return result;
+        return TRUCO_ERR_INVALID_ARGUMENT;
     }
 
-    truco_event_log_init(&log);
-    result.status = truco_hand_apply(game, player, command, &log);
-    truco_event_log_copy_to_result(&log, &result);
-
-    return result;
+    return truco_hand_apply(game, player, command);
 }
 
 truco_status truco_game_legal_commands(const truco_game *game,

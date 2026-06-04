@@ -12,7 +12,6 @@ typedef enum envido_bid {
   FALTA_ENVIDO = -1
 } envido_bid;
 
-static truco_event_log *active_log;
 
 static int is_valid_player(const truco_game *game, unsigned int player);
 
@@ -85,14 +84,8 @@ static int compare_mano_order(const truco_game *game, unsigned int left_player,
 static void add_score(truco_game *game, unsigned int team,
                       unsigned int points) {
   game->score[team] += points;
-  if (active_log != 0) {
-    truco_event_log_emit_score(active_log, team, points);
-  }
   if (game->score[team] >= game->target_score) {
     game->phase = TRUCO_PHASE_GAME_OVER;
-    if (active_log != 0) {
-      truco_event_log_emit_game_over(active_log);
-    }
   }
 }
 
@@ -183,28 +176,15 @@ static void resolve_current_trick(truco_game *game)
   if (tied_across_teams) {
     game->hand.trick_winner_team[game->hand.current_trick] = TRUCO_TRICK_PARDA;
     game->hand.trick_winner_player[game->hand.current_trick] = (int)game->hand.trick_leader;
-    if (active_log != 0) {
-      truco_event_log_emit_trick_won(active_log, game->hand.current_trick,
-                                     TRUCO_TRICK_PARDA,
-                                     game->hand.trick_leader);
-    }
   } else {
     game->hand.trick_winner_team[game->hand.current_trick] = best_team;
     game->hand.trick_winner_player[game->hand.current_trick] = best_player;
-    if (active_log != 0) {
-      truco_event_log_emit_trick_won(active_log, game->hand.current_trick,
-                                     (unsigned int)best_team,
-                                     (unsigned int)best_player);
-    }
   }
 }
 
 static void finish_hand(truco_game *game, unsigned int winner_team) {
   game->last_hand_winner = (int)winner_team;
   add_score(game, winner_team, game->hand.truco_value);
-  if (active_log != 0) {
-    truco_event_log_emit_hand_finished(active_log, winner_team);
-  }
   if (game->phase != TRUCO_PHASE_GAME_OVER) {
     game->phase = TRUCO_PHASE_HAND_OVER;
   }
@@ -460,9 +440,6 @@ static truco_status hand_start(truco_game *game, unsigned int player) {
   game->phase = TRUCO_PHASE_PLAYING;
   game->dealer = (game->dealer + 1u) % game->player_count;
 
-  if (active_log != 0) {
-    truco_event_log_emit_hand_started(active_log, game->hand.mano);
-  }
 
   return TRUCO_OK;
 }
@@ -497,12 +474,6 @@ static truco_status play_card(truco_game *game, unsigned int player,
       game->hand.hands[player][card_index];
   game->hand.trick_played[game->hand.current_trick][player] = 1u;
 
-  if (active_log != 0) {
-    truco_event_log_emit_card_played(
-        active_log, player, game->hand.current_trick,
-        (unsigned char)card_index,
-        game->hand.trick_cards[game->hand.current_trick][player]);
-  }
 
   game->hand.current_player = (game->hand.current_player + 1u) % game->player_count;
 
@@ -549,10 +520,6 @@ static truco_status raise_truco(truco_game *game, unsigned int player) {
   game->hand.pending_truco_team = (int)player_team;
   game->hand.pending_truco_value = next_truco_value(game);
 
-  if (active_log != 0) {
-    truco_event_log_emit_simple(active_log, TRUCO_EVENT_TRUCO_RAISED, player,
-                                player_team, game->hand.pending_truco_value);
-  }
 
   return TRUCO_OK;
 }
@@ -571,10 +538,6 @@ static truco_status accept_truco(truco_game *game, unsigned int player) {
   game->hand.pending_truco_value = 0u;
   game->hand.pending_truco_team = TRUCO_NO_TEAM;
 
-  if (active_log != 0) {
-    truco_event_log_emit_simple(active_log, TRUCO_EVENT_TRUCO_ACCEPTED, player,
-                                team_for(game, player), game->hand.truco_value);
-  }
 
   return TRUCO_OK;
 }
@@ -705,10 +668,6 @@ static truco_status call_envido(truco_game *game, unsigned int player,
       game->hand.envido_pending_points += (unsigned int)bid;
     }
     game->hand.envido_pending_team = (int)player_team;
-    if (active_log != 0) {
-      truco_event_log_emit_simple(active_log, TRUCO_EVENT_ENVIDO_CALLED, player,
-                                  player_team, game->hand.envido_pending_points);
-    }
     return TRUCO_OK;
   }
 
@@ -723,10 +682,6 @@ static truco_status call_envido(truco_game *game, unsigned int player,
   game->hand.envido_pending_team = (int)player_team;
   game->hand.envido_pending_points = points;
 
-  if (active_log != 0) {
-    truco_event_log_emit_simple(active_log, TRUCO_EVENT_ENVIDO_CALLED, player,
-                                player_team, points);
-  }
 
   return TRUCO_OK;
 }
@@ -770,10 +725,6 @@ static truco_status accept_envido(truco_game *game, unsigned int player) {
   game->hand.envido_pending_points = 0u;
   game->hand.envido_resolved = 1;
 
-  if (active_log != 0) {
-    truco_event_log_emit_simple(active_log, TRUCO_EVENT_ENVIDO_ACCEPTED, player,
-                                winner_team, 0u);
-  }
 
   return TRUCO_OK;
 }
@@ -1030,8 +981,7 @@ truco_status truco_hand_legal_commands(const truco_game *game,
 
 truco_status truco_hand_apply(truco_game *game,
                               unsigned int player,
-                              truco_command command,
-                              truco_event_log *log)
+                              truco_command command)
 {
     truco_status status;
 
@@ -1039,7 +989,6 @@ truco_status truco_hand_apply(truco_game *game,
         return TRUCO_ERR_INVALID_ARGUMENT;
     }
 
-    active_log = log;
 
     switch (command) {
     case TRUCO_CMD_START_HAND:
@@ -1100,7 +1049,6 @@ truco_status truco_hand_apply(truco_game *game,
         break;
     }
 
-    active_log = 0;
 
 #ifdef DEBUG
     if (status == TRUCO_OK) {

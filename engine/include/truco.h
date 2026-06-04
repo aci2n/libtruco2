@@ -13,7 +13,6 @@ extern "C" {
 
 #define TRUCO_HAND_CARDS 3u
 #define TRUCO_MAX_LEGAL_COMMANDS 14u
-#define TRUCO_MAX_EVENTS_PER_APPLY 8u
 #define TRUCO_FLOR_POINTS 3u
 #define TRUCO_MAX_PLAYERS 6u
 #define TRUCO_MAX_TEAMS 2u
@@ -67,46 +66,10 @@ typedef enum truco_command {
     TRUCO_CMD_GO_TO_DECK
 } truco_command;
 
-typedef enum truco_event_kind {
-    TRUCO_EVENT_NONE = 0,
-    TRUCO_EVENT_HAND_STARTED,
-    TRUCO_EVENT_CARD_PLAYED,
-    TRUCO_EVENT_TRICK_WON,
-    TRUCO_EVENT_HAND_FINISHED,
-    TRUCO_EVENT_TRUCO_RAISED,
-    TRUCO_EVENT_TRUCO_ACCEPTED,
-    TRUCO_EVENT_TRUCO_DECLINED,
-    TRUCO_EVENT_ENVIDO_CALLED,
-    TRUCO_EVENT_ENVIDO_ACCEPTED,
-    TRUCO_EVENT_ENVIDO_DECLINED,
-    TRUCO_EVENT_FLOR_CALLED,
-    TRUCO_EVENT_FLOR_ACCEPTED,
-    TRUCO_EVENT_FLOR_DECLINED,
-    TRUCO_EVENT_SCORE_CHANGED,
-    TRUCO_EVENT_GAME_OVER,
-    TRUCO_EVENT_WENT_TO_DECK
-} truco_event_kind;
-
 typedef struct truco_card {
     truco_suit suit;
     unsigned char rank;
 } truco_card;
-
-typedef struct truco_event {
-    truco_event_kind kind;
-    unsigned int player;
-    unsigned int team;
-    unsigned int amount;
-    unsigned int trick;
-    unsigned char card_slot;
-    truco_card card;
-} truco_event;
-
-typedef struct truco_apply_result {
-    truco_status status;
-    size_t event_count;
-    truco_event events[TRUCO_MAX_EVENTS_PER_APPLY];
-} truco_apply_result;
 
 typedef struct truco_legal_commands {
     size_t count;
@@ -114,11 +77,6 @@ typedef struct truco_legal_commands {
 } truco_legal_commands;
 
 typedef struct truco_game truco_game;
-
-static inline truco_status truco_apply_status(truco_apply_result result)
-{
-    return result.status;
-}
 
 /* Match + hand state (hand fields live in nested truco_hand; see implementation.md). */
 size_t truco_game_size(void);
@@ -136,10 +94,9 @@ truco_status truco_game_set_team_for_player(truco_game *game,
                                             unsigned int team);
 truco_status truco_game_set_flor_enabled(truco_game *game, int enabled);
 
-/* Reducer entry point: mutates game and returns status plus emitted events. */
-truco_apply_result truco_game_apply(truco_game *game,
-                                    unsigned int player,
-                                    truco_command command);
+truco_status truco_game_apply(truco_game *game,
+                              unsigned int player,
+                              truco_command command);
 truco_status truco_game_legal_commands(const truco_game *game,
                                        unsigned int player,
                                        truco_legal_commands *out);
