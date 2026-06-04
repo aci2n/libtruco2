@@ -12,7 +12,8 @@ extern "C" {
 #define TRUCO_VERSION_PATCH 0
 
 #define TRUCO_HAND_CARDS 3u
-#define TRUCO_MAX_LEGAL_COMMANDS 12u
+#define TRUCO_MAX_LEGAL_COMMANDS 14u
+#define TRUCO_FLOR_POINTS 3u
 #define TRUCO_MAX_PLAYERS 6u
 #define TRUCO_MAX_TEAMS 2u
 
@@ -50,6 +51,7 @@ typedef enum truco_command {
     TRUCO_CMD_CALL_ENVIDO,
     TRUCO_CMD_CALL_REAL_ENVIDO,
     TRUCO_CMD_CALL_FALTA_ENVIDO,
+    TRUCO_CMD_CALL_FLOR,
     TRUCO_CMD_ACCEPT_BID,
     TRUCO_CMD_REJECT_BID,
     TRUCO_CMD_GO_TO_DECK
@@ -85,6 +87,7 @@ truco_status truco_game_set_initial_dealer(truco_game *game, unsigned int initia
 truco_status truco_game_set_team_for_player(truco_game *game,
                                             unsigned int player,
                                             unsigned int team);
+truco_status truco_game_set_flor_enabled(truco_game *game, int enabled);
 
 truco_status truco_game_apply(truco_game *game,
                               unsigned int player,
@@ -100,7 +103,10 @@ truco_phase truco_game_phase(const truco_game *game);
 unsigned int truco_game_current_player(const truco_game *game);
 unsigned int truco_game_pending_truco_value(const truco_game *game);
 unsigned int truco_game_pending_envido_points(const truco_game *game);
+unsigned int truco_game_pending_flor_points(const truco_game *game);
 unsigned int truco_game_next_truco_value(const truco_game *game);
+int truco_game_flor_enabled(const truco_game *game);
+int truco_game_player_has_flor(const truco_game *game, unsigned int player);
 unsigned int truco_game_score(const truco_game *game, unsigned int team);
 /* 0/1 winning team, or -1 if the hand is not over yet */
 int truco_game_hand_winner(const truco_game *game);
@@ -117,6 +123,7 @@ truco_status truco_game_trick_card(const truco_game *game,
                                    unsigned int player,
                                    truco_card *card_out);
 unsigned int truco_game_hand_envido(const truco_game *game, unsigned int player);
+unsigned int truco_game_hand_flor(const truco_game *game, unsigned int player);
 truco_status truco_game_set_hand(truco_game *game,
                                  unsigned int player,
                                  const truco_card cards[TRUCO_HAND_CARDS]);

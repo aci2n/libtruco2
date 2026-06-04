@@ -842,6 +842,235 @@ static void test_dealer_rotation(void)
     truco_game_delete(&game);
 }
 
+static void configure_two_player_game_with_flor(truco_game *game)
+{
+    configure_two_player_game(game);
+    expect_ok(truco_game_set_flor_enabled(game, 1));
+}
+
+static void test_flor_disabled_by_default(void)
+{
+    truco_game *game = create_two_player_game();
+    truco_legal_commands legal;
+
+    CHECK(!truco_game_flor_enabled(game));
+    start_two_player_hand(game);
+    expect_ok(truco_game_legal_commands(game, 0u, &legal));
+    CHECK(!has_command(&legal, TRUCO_CMD_CALL_FLOR));
+
+    truco_game_delete(&game);
+}
+
+static void test_flor_points_and_detection(void)
+{
+    truco_card flor_hand[TRUCO_HAND_CARDS] = {
+        {TRUCO_SUIT_ESPADA, 7u},
+        {TRUCO_SUIT_ESPADA, 6u},
+        {TRUCO_SUIT_ESPADA, 5u}
+    };
+    truco_card not_flor[TRUCO_HAND_CARDS] = {
+        {TRUCO_SUIT_ESPADA, 7u},
+        {TRUCO_SUIT_ESPADA, 6u},
+        {TRUCO_SUIT_ORO, 5u}
+    };
+
+    CHECK(truco_has_flor(flor_hand));
+    CHECK(!truco_has_flor(not_flor));
+    CHECK(truco_flor_points(flor_hand) == 38u);
+    CHECK(truco_flor_points(not_flor) == 0u);
+}
+
+static void test_flor_uncontested_awards_three_points(void)
+{
+    truco_game *game = truco_game_create();
+    truco_card flor_hand[TRUCO_HAND_CARDS] = {
+        {TRUCO_SUIT_COPA, 5u},
+        {TRUCO_SUIT_COPA, 6u},
+        {TRUCO_SUIT_COPA, 7u}
+    };
+    truco_card plain_hand[TRUCO_HAND_CARDS] = {
+        {TRUCO_SUIT_ESPADA, 1u},
+        {TRUCO_SUIT_BASTO, 4u},
+        {TRUCO_SUIT_ORO, 5u}
+    };
+
+    CHECK(game != 0);
+    configure_two_player_game_with_flor(game);
+    start_two_player_hand(game);
+    expect_ok(truco_game_set_hand(game, 0u, flor_hand));
+    expect_ok(truco_game_set_hand(game, 1u, plain_hand));
+    CHECK(truco_game_player_has_flor(game, 0u));
+    expect_ok(truco_game_apply(game, 0u, TRUCO_CMD_CALL_FLOR));
+    CHECK(truco_game_score(game, 0u) == 3u);
+    CHECK(truco_game_score(game, 1u) == 0u);
+
+    truco_game_delete(&game);
+}
+
+static void test_flor_contested_acceptance(void)
+{
+    truco_game *game = truco_game_create();
+    truco_card strong_flor[TRUCO_HAND_CARDS] = {
+        {TRUCO_SUIT_COPA, 5u},
+        {TRUCO_SUIT_COPA, 6u},
+        {TRUCO_SUIT_COPA, 7u}
+    };
+    truco_card weak_flor[TRUCO_HAND_CARDS] = {
+        {TRUCO_SUIT_ORO, 4u},
+        {TRUCO_SUIT_ORO, 5u},
+        {TRUCO_SUIT_ORO, 6u}
+    };
+
+    CHECK(game != 0);
+    configure_two_player_game_with_flor(game);
+    start_two_player_hand(game);
+    expect_ok(truco_game_set_hand(game, 0u, strong_flor));
+    expect_ok(truco_game_set_hand(game, 1u, weak_flor));
+    expect_ok(truco_game_apply(game, 0u, TRUCO_CMD_CALL_FLOR));
+    CHECK(truco_game_pending_flor_points(game) == 3u);
+    expect_ok(truco_game_apply(game, 1u, TRUCO_CMD_ACCEPT_BID));
+    CHECK(truco_game_score(game, 0u) == 3u);
+    CHECK(truco_game_score(game, 1u) == 0u);
+
+    truco_game_delete(&game);
+}
+
+static void test_flor_contested_rejection(void)
+{
+    truco_game *game = truco_game_create();
+    truco_card strong_flor[TRUCO_HAND_CARDS] = {
+        {TRUCO_SUIT_COPA, 5u},
+        {TRUCO_SUIT_COPA, 6u},
+        {TRUCO_SUIT_COPA, 7u}
+    };
+    truco_card weak_flor[TRUCO_HAND_CARDS] = {
+        {TRUCO_SUIT_ORO, 4u},
+        {TRUCO_SUIT_ORO, 5u},
+        {TRUCO_SUIT_ORO, 6u}
+    };
+
+    CHECK(game != 0);
+    configure_two_player_game_with_flor(game);
+    start_two_player_hand(game);
+    expect_ok(truco_game_set_hand(game, 0u, strong_flor));
+    expect_ok(truco_game_set_hand(game, 1u, weak_flor));
+    expect_ok(truco_game_apply(game, 0u, TRUCO_CMD_CALL_FLOR));
+    expect_ok(truco_game_apply(game, 1u, TRUCO_CMD_REJECT_BID));
+    CHECK(truco_game_score(game, 0u) == 3u);
+
+    truco_game_delete(&game);
+}
+
+static void test_flor_blocks_envido_after_call(void)
+{
+    truco_game *game = truco_game_create();
+    truco_card flor_hand[TRUCO_HAND_CARDS] = {
+        {TRUCO_SUIT_COPA, 5u},
+        {TRUCO_SUIT_COPA, 6u},
+        {TRUCO_SUIT_COPA, 7u}
+    };
+    truco_card plain_hand[TRUCO_HAND_CARDS] = {
+        {TRUCO_SUIT_ESPADA, 1u},
+        {TRUCO_SUIT_BASTO, 4u},
+        {TRUCO_SUIT_ORO, 5u}
+    };
+    truco_legal_commands legal;
+
+    CHECK(game != 0);
+    configure_two_player_game_with_flor(game);
+    start_two_player_hand(game);
+    expect_ok(truco_game_set_hand(game, 0u, flor_hand));
+    expect_ok(truco_game_set_hand(game, 1u, plain_hand));
+    expect_ok(truco_game_apply(game, 0u, TRUCO_CMD_CALL_FLOR));
+    expect_ok(truco_game_legal_commands(game, 1u, &legal));
+    CHECK(!has_command(&legal, TRUCO_CMD_CALL_ENVIDO));
+    CHECK(truco_game_apply(game, 1u, TRUCO_CMD_CALL_ENVIDO) == TRUCO_ERR_INVALID_STATE);
+
+    truco_game_delete(&game);
+}
+
+static void test_flor_holder_must_declare_before_play(void)
+{
+    truco_game *game = truco_game_create();
+    truco_card flor_hand[TRUCO_HAND_CARDS] = {
+        {TRUCO_SUIT_COPA, 5u},
+        {TRUCO_SUIT_COPA, 6u},
+        {TRUCO_SUIT_COPA, 7u}
+    };
+    truco_card plain_hand[TRUCO_HAND_CARDS] = {
+        {TRUCO_SUIT_ESPADA, 1u},
+        {TRUCO_SUIT_BASTO, 4u},
+        {TRUCO_SUIT_ORO, 5u}
+    };
+    truco_legal_commands legal;
+
+    CHECK(game != 0);
+    configure_two_player_game_with_flor(game);
+    start_two_player_hand(game);
+    expect_ok(truco_game_set_hand(game, 0u, flor_hand));
+    expect_ok(truco_game_set_hand(game, 1u, plain_hand));
+    expect_ok(truco_game_legal_commands(game, 0u, &legal));
+    CHECK(has_command(&legal, TRUCO_CMD_CALL_FLOR));
+    CHECK(!has_command(&legal, TRUCO_CMD_PLAY_CARD_0));
+    CHECK(!has_command(&legal, TRUCO_CMD_CALL_ENVIDO));
+    CHECK(truco_game_apply(game, 0u, TRUCO_CMD_PLAY_CARD_0) == TRUCO_ERR_INVALID_STATE);
+
+    truco_game_delete(&game);
+}
+
+static void test_flor_without_flor_in_hand_allows_envido(void)
+{
+    truco_game *game = truco_game_create();
+    truco_card no_flor0[TRUCO_HAND_CARDS] = {
+        {TRUCO_SUIT_ESPADA, 7u},
+        {TRUCO_SUIT_ESPADA, 6u},
+        {TRUCO_SUIT_ORO, 5u}
+    };
+    truco_card no_flor1[TRUCO_HAND_CARDS] = {
+        {TRUCO_SUIT_BASTO, 4u},
+        {TRUCO_SUIT_BASTO, 5u},
+        {TRUCO_SUIT_COPA, 6u}
+    };
+
+    CHECK(game != 0);
+    configure_two_player_game_with_flor(game);
+    start_two_player_hand(game);
+    expect_ok(truco_game_set_hand(game, 0u, no_flor0));
+    expect_ok(truco_game_set_hand(game, 1u, no_flor1));
+    expect_ok(truco_game_apply(game, 0u, TRUCO_CMD_CALL_ENVIDO));
+    expect_ok(truco_game_apply(game, 1u, TRUCO_CMD_ACCEPT_BID));
+    CHECK(truco_game_score(game, 0u) == 2u);
+
+    truco_game_delete(&game);
+}
+
+static void test_flor_can_end_game_mid_hand(void)
+{
+    truco_game *game = truco_game_create();
+    truco_card flor_hand[TRUCO_HAND_CARDS] = {
+        {TRUCO_SUIT_COPA, 5u},
+        {TRUCO_SUIT_COPA, 6u},
+        {TRUCO_SUIT_COPA, 7u}
+    };
+    truco_card plain_hand[TRUCO_HAND_CARDS] = {
+        {TRUCO_SUIT_ESPADA, 1u},
+        {TRUCO_SUIT_BASTO, 4u},
+        {TRUCO_SUIT_ORO, 5u}
+    };
+
+    CHECK(game != 0);
+    configure_two_player_game_with_flor(game);
+    expect_ok(truco_game_set_target_score(game, 3u));
+    start_two_player_hand(game);
+    expect_ok(truco_game_set_hand(game, 0u, flor_hand));
+    expect_ok(truco_game_set_hand(game, 1u, plain_hand));
+    expect_ok(truco_game_apply(game, 0u, TRUCO_CMD_CALL_FLOR));
+    CHECK(truco_game_phase(game) == TRUCO_PHASE_GAME_OVER);
+    CHECK(truco_game_score(game, 0u) == 3u);
+
+    truco_game_delete(&game);
+}
+
 int main(void)
 {
     test_card_ranking();
@@ -869,6 +1098,15 @@ int main(void)
     test_deterministic_deal();
     test_envido_can_end_game_mid_hand();
     test_dealer_rotation();
+    test_flor_disabled_by_default();
+    test_flor_points_and_detection();
+    test_flor_uncontested_awards_three_points();
+    test_flor_contested_acceptance();
+    test_flor_contested_rejection();
+    test_flor_blocks_envido_after_call();
+    test_flor_holder_must_declare_before_play();
+    test_flor_without_flor_in_hand_allows_envido();
+    test_flor_can_end_game_mid_hand();
 
     printf("ok - %u checks\n", tests_run);
     return 0;

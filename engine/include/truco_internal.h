@@ -14,6 +14,8 @@ int truco_card_is_valid(truco_card card);
 int truco_card_power(truco_card card);
 int truco_card_compare(truco_card left, truco_card right);
 unsigned int truco_envido_points(const truco_card cards[TRUCO_HAND_CARDS]);
+int truco_has_flor(const truco_card cards[TRUCO_HAND_CARDS]);
+unsigned int truco_flor_points(const truco_card cards[TRUCO_HAND_CARDS]);
 
 truco_status truco_deck(truco_card *cards, size_t count);
 truco_status truco_shuffle(truco_card *cards, size_t count, unsigned int *seed);

@@ -57,6 +57,8 @@ static const char *command_label(truco_command command)
         return "CALL REAL ENVIDO";
     case TRUCO_CMD_CALL_FALTA_ENVIDO:
         return "CALL FALTA ENVIDO";
+    case TRUCO_CMD_CALL_FLOR:
+        return "CALL FLOR";
     case TRUCO_CMD_ACCEPT_BID:
         return "ACCEPT BID";
     case TRUCO_CMD_REJECT_BID:
@@ -163,6 +165,7 @@ int truco_server_format_view(struct truco_server_session *session,
     unsigned int slot;
     unsigned int pending_truco;
     unsigned int pending_envido;
+    unsigned int pending_flor;
 
     if (session == 0 || response == 0 || response_size == 0u) {
         return -1;
@@ -200,6 +203,7 @@ int truco_server_format_view(struct truco_server_session *session,
 
     pending_truco = truco_game_pending_truco_value(game);
     pending_envido = truco_game_pending_envido_points(game);
+    pending_flor = truco_game_pending_flor_points(game);
     if (pending_truco != 0u &&
         append_printf(response, response_size, &offset, "pending truco: %u\r\n",
                       pending_truco) != 0) {
@@ -208,6 +212,11 @@ int truco_server_format_view(struct truco_server_session *session,
     if (pending_envido != 0u &&
         append_printf(response, response_size, &offset, "pending envido: %u\r\n",
                       pending_envido) != 0) {
+        return -1;
+    }
+    if (pending_flor != 0u &&
+        append_printf(response, response_size, &offset, "pending flor: %u\r\n",
+                      pending_flor) != 0) {
         return -1;
     }
 
@@ -265,6 +274,11 @@ int truco_server_format_view(struct truco_server_session *session,
     }
     if (append_printf(response, response_size, &offset, "envido: %u\r\n",
                       truco_game_hand_envido(game, viewer)) != 0) {
+        return -1;
+    }
+    if (truco_game_flor_enabled(game) &&
+        append_printf(response, response_size, &offset, "flor: %u\r\n",
+                      truco_game_hand_flor(game, viewer)) != 0) {
         return -1;
     }
 
