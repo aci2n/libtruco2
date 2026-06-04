@@ -58,15 +58,25 @@ The API uses explicit status returns rather than `errno`. Functions return
 Clients mutate game state with scoped `truco_command` values:
 
 ```c
-truco_game_apply(&game, player, TRUCO_CMD_PLAY_CARD_0);
-truco_game_apply(&game, player, TRUCO_CMD_CALL_REAL_ENVIDO);
-truco_game_apply(&game, player, TRUCO_CMD_ACCEPT_BID);
+truco_apply_result result =
+    truco_game_apply(&game, player, TRUCO_CMD_PLAY_CARD_0);
+if (result.status != TRUCO_OK) { /* handle error */ }
+for (size_t i = 0; i < result.event_count; ++i) {
+    /* react to result.events[i] (UI, logging, replay) */
+}
 ```
 
-Specific operations such as playing a card, calling Envido, accepting a bid, or
-starting a hand are private helpers inside `src/truco.c`. The public API stays
-small and protocol-like: clients submit a command and the engine validates and
-applies it.
+The engine is split into modules:
+
+- `src/truco_cards.c` — deck construction, shuffle, card ranking, envido/flor points
+- `src/truco_hand.c` — hand rules (`truco_hand_apply`, legality, tricks, bids)
+- `src/truco_event.c` — event log helpers
+- `src/truco_game.c` — match lifecycle, configuration, public getters
+
+`truco_game_apply` is the reducer entry point: it runs `truco_hand_apply`, copies
+emitted `truco_event` values into `truco_apply_result`, and returns both status
+and events. Hand state lives in nested `truco_hand`; match fields (scores, dealer,
+phase) stay on `truco_game`.
 
 Clients should use `truco_game_legal_commands` to discover valid commands for a
 player before calling `truco_game_apply`. The caller allocates a
@@ -106,15 +116,18 @@ truco_game_set_player_count(game, 4);
 my_free(game);
 ```
 
-Internally, `struct truco_game` contains fixed arrays sized by
-`TRUCO_MAX_PLAYERS` and `TRUCO_HAND_CARDS`:
+Internally, `struct truco_game` (see `src/truco_hand_internal.h`) holds match
+fields plus a nested `truco_hand` with fixed arrays sized by `TRUCO_MAX_PLAYERS`
+and `TRUCO_HAND_CARDS`:
 
-- `hands[player][slot]` — cards still in hand
-- `played_slots[player][slot]` — which hand cards that player already played (0/1 per slot)
-- `trick_cards[trick][player]` — card on the table for that trick
-- `trick_played[trick][player]` — whether that player already played in that trick (0/1)
-- `trick_winner_team[trick]`
-- `trick_winner_player[trick]`
+- `hand.hands[player][slot]` — cards still in hand
+- `hand.played_slots[player][slot]` — which hand cards that player already played
+- `hand.trick_cards[trick][player]` — card on the table for that trick
+- `hand.trick_played[trick][player]` — whether that player already played in that trick
+- `hand.trick_winner_team[trick]` / `hand.trick_winner_player[trick]`
+
+Use `truco_game_hand_subphase()` for interrupt mode during `TRUCO_PHASE_PLAYING`
+(envido, flor, truco, or open trick play).
 
 This makes embedding simple for games, servers, bots, tests, and simulations.
 Callers can place `truco_game` inside larger state containers or serialize the
