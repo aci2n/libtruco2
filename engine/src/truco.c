@@ -95,7 +95,10 @@ static unsigned int next_truco_value(const truco_game *game);
 static int can_play_card(const truco_game *game, unsigned int player, unsigned int card_index);
 static int can_raise_truco(const truco_game *game, unsigned int player);
 static int can_answer_truco(const truco_game *game, unsigned int player);
-static int can_call_envido(const truco_game *game, unsigned int player, envido_bid bid);
+static int can_call_envido_initial(const truco_game *game, unsigned int player,
+                                   envido_bid bid);
+static int can_counter_envido(const truco_game *game, unsigned int player,
+                                envido_bid bid);
 static int can_answer_envido(const truco_game *game, unsigned int player);
 static int hand_has_flor(const truco_game *game);
 static int opposing_team_has_flor(const truco_game *game, unsigned int team);
@@ -386,19 +389,28 @@ truco_status truco_game_legal_commands(const truco_game *game,
     add_legal_command(out, TRUCO_CMD_REJECT_BID);
   }
 
-  if (can_call_envido(game, player, ENVIDO)) {
+  if (can_call_envido_initial(game, player, ENVIDO)) {
     add_legal_command(out, TRUCO_CMD_CALL_ENVIDO);
   }
-  if (can_call_envido(game, player, REAL_ENVIDO)) {
+  if (can_call_envido_initial(game, player, REAL_ENVIDO)) {
     add_legal_command(out, TRUCO_CMD_CALL_REAL_ENVIDO);
   }
-  if (can_call_envido(game, player, FALTA_ENVIDO)) {
+  if (can_call_envido_initial(game, player, FALTA_ENVIDO)) {
     add_legal_command(out, TRUCO_CMD_CALL_FALTA_ENVIDO);
   }
 
   if (can_answer_envido(game, player)) {
     add_legal_command(out, TRUCO_CMD_ACCEPT_BID);
     add_legal_command(out, TRUCO_CMD_REJECT_BID);
+    if (can_counter_envido(game, player, ENVIDO)) {
+      add_legal_command(out, TRUCO_CMD_CALL_ENVIDO);
+    }
+    if (can_counter_envido(game, player, REAL_ENVIDO)) {
+      add_legal_command(out, TRUCO_CMD_CALL_REAL_ENVIDO);
+    }
+    if (can_counter_envido(game, player, FALTA_ENVIDO)) {
+      add_legal_command(out, TRUCO_CMD_CALL_FALTA_ENVIDO);
+    }
   }
 
   if (can_go_to_deck(game, player)) {
@@ -1013,12 +1025,16 @@ static int can_answer_truco(const truco_game *game, unsigned int player) {
   return game->pending_truco_team != (int)player_team;
 }
 
-static int can_call_envido(const truco_game *game, unsigned int player,
-                           envido_bid bid) {
+static int envido_phase_open(const truco_game *game) {
+  return !game->envido_resolved && !has_any_card_been_played(game) &&
+         !game->flor_blocks_envido;
+}
+
+static int can_call_envido_initial(const truco_game *game, unsigned int player,
+                                   envido_bid bid) {
   if (!is_valid_player(game, player) || !is_valid_bid(bid) ||
-      game->phase != TRUCO_PHASE_PLAYING || game->envido_resolved ||
-      game->envido_pending_team >= 0 || game->flor_blocks_envido ||
-      has_any_card_been_played(game)) {
+      game->phase != TRUCO_PHASE_PLAYING || game->envido_pending_team >= 0 ||
+      !envido_phase_open(game)) {
     return 0;
   }
 
@@ -1035,6 +1051,24 @@ static int can_call_envido(const truco_game *game, unsigned int player,
   }
 
   return 1;
+}
+
+static int can_counter_envido(const truco_game *game, unsigned int player,
+                              envido_bid bid) {
+  unsigned int player_team;
+
+  if (!is_valid_player(game, player) || !is_valid_bid(bid) ||
+      game->phase != TRUCO_PHASE_PLAYING || game->envido_pending_team < 0 ||
+      !envido_phase_open(game)) {
+    return 0;
+  }
+
+  if (game->flor_enabled && truco_has_flor(game->hands[player])) {
+    return 0;
+  }
+
+  player_team = team_for(game, player);
+  return game->envido_pending_team != (int)player_team;
 }
 
 static int can_answer_envido(const truco_game *game, unsigned int player) {
@@ -1377,7 +1411,22 @@ static truco_status call_envido(truco_game *game, unsigned int player,
     return TRUCO_ERR_INVALID_ARGUMENT;
   }
 
-  if (!can_call_envido(game, player, bid)) {
+  if (game->envido_pending_team >= 0) {
+    if (!can_counter_envido(game, player, bid)) {
+      return TRUCO_ERR_INVALID_STATE;
+    }
+
+    player_team = team_for(game, player);
+    if (bid == FALTA_ENVIDO) {
+      game->envido_pending_points = falta_envido_points(game, player_team);
+    } else {
+      game->envido_pending_points += (unsigned int)bid;
+    }
+    game->envido_pending_team = (int)player_team;
+    return TRUCO_OK;
+  }
+
+  if (!can_call_envido_initial(game, player, bid)) {
     return TRUCO_ERR_INVALID_STATE;
   }
 

@@ -1107,7 +1107,8 @@ static void test_envido_primero_on_truco_raise(void)
 
     expect_ok(truco_game_legal_commands(game, 0u, &legal));
     CHECK(has_command(&legal, TRUCO_CMD_ACCEPT_BID));
-    CHECK(!has_command(&legal, TRUCO_CMD_CALL_ENVIDO));
+    CHECK(has_command(&legal, TRUCO_CMD_CALL_ENVIDO));
+    CHECK(has_command(&legal, TRUCO_CMD_CALL_REAL_ENVIDO));
 
     expect_ok(truco_game_apply(game, 0u, TRUCO_CMD_ACCEPT_BID));
     CHECK(truco_game_pending_truco_value(game) == 2u);
@@ -1160,6 +1161,119 @@ static void test_envido_primero_go_to_deck_keeps_truco_pending(void)
     truco_game_delete(&game);
 }
 
+static void test_envido_counter_envido_chain(void)
+{
+    truco_game *game = create_two_player_game();
+    truco_card strong_envido[TRUCO_HAND_CARDS] = {
+        {TRUCO_SUIT_ESPADA, 7u},
+        {TRUCO_SUIT_ESPADA, 6u},
+        {TRUCO_SUIT_ORO, 12u}
+    };
+    truco_card weak_envido[TRUCO_HAND_CARDS] = {
+        {TRUCO_SUIT_ORO, 7u},
+        {TRUCO_SUIT_ORO, 5u},
+        {TRUCO_SUIT_COPA, 1u}
+    };
+
+    start_two_player_hand(game);
+    expect_ok(truco_game_set_hand(game, 0u, strong_envido));
+    expect_ok(truco_game_set_hand(game, 1u, weak_envido));
+    expect_ok(truco_game_apply(game, 0u, TRUCO_CMD_CALL_ENVIDO));
+    CHECK(truco_game_pending_envido_points(game) == 2u);
+    expect_ok(truco_game_apply(game, 1u, TRUCO_CMD_CALL_ENVIDO));
+    CHECK(truco_game_pending_envido_points(game) == 4u);
+    expect_ok(truco_game_apply(game, 0u, TRUCO_CMD_ACCEPT_BID));
+    CHECK(truco_game_score(game, 0u) == 4u);
+    CHECK(truco_game_apply(game, 0u, TRUCO_CMD_CALL_ENVIDO) == TRUCO_ERR_INVALID_STATE);
+
+    truco_game_delete(&game);
+}
+
+static void test_envido_counter_real_envido_chain(void)
+{
+    truco_game *game = create_two_player_game();
+    truco_card strong_envido[TRUCO_HAND_CARDS] = {
+        {TRUCO_SUIT_ESPADA, 7u},
+        {TRUCO_SUIT_ESPADA, 6u},
+        {TRUCO_SUIT_ORO, 12u}
+    };
+    truco_card weak_envido[TRUCO_HAND_CARDS] = {
+        {TRUCO_SUIT_ORO, 7u},
+        {TRUCO_SUIT_ORO, 5u},
+        {TRUCO_SUIT_COPA, 1u}
+    };
+
+    start_two_player_hand(game);
+    expect_ok(truco_game_set_hand(game, 0u, weak_envido));
+    expect_ok(truco_game_set_hand(game, 1u, strong_envido));
+    expect_ok(truco_game_apply(game, 0u, TRUCO_CMD_CALL_ENVIDO));
+    expect_ok(truco_game_apply(game, 1u, TRUCO_CMD_CALL_REAL_ENVIDO));
+    CHECK(truco_game_pending_envido_points(game) == 5u);
+    expect_ok(truco_game_apply(game, 0u, TRUCO_CMD_ACCEPT_BID));
+    CHECK(truco_game_score(game, 1u) == 5u);
+
+    truco_game_delete(&game);
+}
+
+static void test_envido_counter_reject_awards_last_caller(void)
+{
+    truco_game *game = create_two_player_game();
+
+    start_two_player_hand(game);
+    install_basic_two_player_hands(game);
+    expect_ok(truco_game_apply(game, 0u, TRUCO_CMD_CALL_ENVIDO));
+    expect_ok(truco_game_apply(game, 1u, TRUCO_CMD_CALL_ENVIDO));
+    expect_ok(truco_game_apply(game, 0u, TRUCO_CMD_REJECT_BID));
+    CHECK(truco_game_score(game, 1u) == 1u);
+    CHECK(truco_game_score(game, 0u) == 0u);
+
+    truco_game_delete(&game);
+}
+
+static void test_envido_counter_falta_envido_replaces_stake(void)
+{
+    truco_game *game = create_two_player_game();
+    truco_card strong_envido[TRUCO_HAND_CARDS] = {
+        {TRUCO_SUIT_ESPADA, 7u},
+        {TRUCO_SUIT_ESPADA, 6u},
+        {TRUCO_SUIT_ORO, 12u}
+    };
+    truco_card weak_envido[TRUCO_HAND_CARDS] = {
+        {TRUCO_SUIT_ORO, 7u},
+        {TRUCO_SUIT_ORO, 5u},
+        {TRUCO_SUIT_COPA, 1u}
+    };
+
+    start_two_player_hand(game);
+    expect_ok(truco_game_set_score(game, 0u, 22u));
+    expect_ok(truco_game_set_score(game, 1u, 10u));
+    expect_ok(truco_game_set_hand(game, 0u, strong_envido));
+    expect_ok(truco_game_set_hand(game, 1u, weak_envido));
+    expect_ok(truco_game_apply(game, 0u, TRUCO_CMD_CALL_ENVIDO));
+    expect_ok(truco_game_apply(game, 1u, TRUCO_CMD_CALL_FALTA_ENVIDO));
+    CHECK(truco_game_pending_envido_points(game) == 8u);
+    expect_ok(truco_game_apply(game, 0u, TRUCO_CMD_ACCEPT_BID));
+    CHECK(truco_game_score(game, 0u) == 30u);
+
+    truco_game_delete(&game);
+}
+
+static void test_envido_caller_cannot_counter_own_bid(void)
+{
+    truco_game *game = create_two_player_game();
+    truco_legal_commands legal;
+
+    start_two_player_hand(game);
+    install_basic_two_player_hands(game);
+    expect_ok(truco_game_apply(game, 0u, TRUCO_CMD_CALL_ENVIDO));
+    expect_ok(truco_game_legal_commands(game, 0u, &legal));
+    CHECK(!has_command(&legal, TRUCO_CMD_CALL_ENVIDO));
+    CHECK(!has_command(&legal, TRUCO_CMD_CALL_REAL_ENVIDO));
+    CHECK(truco_game_apply(game, 0u, TRUCO_CMD_CALL_REAL_ENVIDO) == TRUCO_ERR_INVALID_STATE);
+
+    truco_game_delete(&game);
+}
+
 int main(void)
 {
     test_card_ranking();
@@ -1199,6 +1313,11 @@ int main(void)
     test_envido_primero_on_truco_raise();
     test_envido_primero_reject_then_truco_reject();
     test_envido_primero_go_to_deck_keeps_truco_pending();
+    test_envido_counter_envido_chain();
+    test_envido_counter_real_envido_chain();
+    test_envido_counter_reject_awards_last_caller();
+    test_envido_counter_falta_envido_replaces_stake();
+    test_envido_caller_cannot_counter_own_bid();
 
     printf("ok - %u checks\n", tests_run);
     return 0;
