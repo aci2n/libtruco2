@@ -1109,6 +1109,7 @@ static void test_envido_primero_on_truco_raise(void)
     expect_apply_ok(game,  1u, TRUCO_CMD_CALL_ENVIDO);
     CHECK(truco_game_pending_truco_value(game) == 2u);
     CHECK(truco_game_pending_envido_points(game) == 2u);
+    CHECK(truco_game_pending_bid(game) == TRUCO_PENDING_BID_ENVIDO);
     CHECK(truco_game_apply(game, 1u, TRUCO_CMD_ACCEPT_BID) == TRUCO_ERR_INVALID_STATE);
 
     expect_ok(truco_game_legal_commands(game, 0u, &legal));
@@ -1117,6 +1118,7 @@ static void test_envido_primero_on_truco_raise(void)
     CHECK(has_command(&legal, TRUCO_CMD_CALL_REAL_ENVIDO));
 
     expect_apply_ok(game,  0u, TRUCO_CMD_ACCEPT_BID);
+    CHECK(truco_game_pending_bid(game) == TRUCO_PENDING_BID_TRUCO);
     CHECK(truco_game_pending_truco_value(game) == 2u);
     CHECK(truco_game_score(game, 1u) == 2u);
     CHECK(truco_game_score(game, 0u) == 0u);
@@ -1126,6 +1128,7 @@ static void test_envido_primero_on_truco_raise(void)
     CHECK(!has_command(&legal, TRUCO_CMD_CALL_ENVIDO));
 
     expect_apply_ok(game,  1u, TRUCO_CMD_ACCEPT_BID);
+    CHECK(truco_game_pending_bid(game) == TRUCO_PENDING_BID_NONE);
     CHECK(truco_game_pending_truco_value(game) == 0u);
     expect_apply_ok(game,  0u, TRUCO_CMD_PLAY_CARD_0);
 

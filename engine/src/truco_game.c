@@ -238,6 +238,11 @@ truco_hand_subphase truco_game_hand_subphase(const truco_game *game)
     return truco_hand_subphase_of(game);
 }
 
+truco_pending_bid truco_game_pending_bid(const truco_game *game)
+{
+    return truco_hand_pending_bid_of(game);
+}
+
 unsigned int truco_game_current_player(const truco_game *game)
 {
     if (game == 0) {

@@ -53,6 +53,7 @@ struct truco_game {
 
 void truco_hand_clear(truco_hand *hand);
 truco_hand_subphase truco_hand_subphase_of(const truco_game *game);
+truco_pending_bid truco_hand_pending_bid_of(const truco_game *game);
 
 truco_status truco_hand_apply(truco_game *game,
                               unsigned int player,

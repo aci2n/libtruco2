@@ -87,8 +87,10 @@ Envido.
 The command list makes clients simple: render each command, let the user or bot
 choose one, then pass the chosen enum back to `truco_game_apply`.
 
-Internally, legal action discovery uses the same `can_*` predicates as the
-dispatch helpers. This keeps command availability and command execution aligned.
+`TRUCO_CMD_ACCEPT_BID` and `TRUCO_CMD_REJECT_BID` dispatch from
+`truco_game_pending_bid()` (envido, then flor, then truco). Use that getter to
+label UI actions; the engine validates the answering seat with `can_*` helpers
+for the active pending bid only.
 
 Turn restrictions:
 
@@ -123,7 +125,9 @@ and `TRUCO_HAND_CARDS`:
 - `hand.trick_winner_team[trick]` / `hand.trick_winner_player[trick]`
 
 Use `truco_game_hand_subphase()` for interrupt mode during `TRUCO_PHASE_PLAYING`
-(envido, flor, truco, or open trick play).
+(envido, flor, truco, or open trick play). Use `truco_game_pending_bid()` when
+you only care which bid accept/reject/go-to-deck-as-fold targets (returns
+`TRUCO_PENDING_BID_NONE` during normal trick play).
 
 This makes embedding simple for games, servers, bots, tests, and simulations.
 Callers can place `truco_game` inside larger state containers or serialize the

@@ -50,6 +50,14 @@ typedef enum truco_hand_subphase {
     TRUCO_HAND_SUB_FLOR_PENDING
 } truco_hand_subphase;
 
+/* Which bid ACCEPT_BID / REJECT_BID / GO_TO_DECK (as fold) applies to; envido > flor > truco. */
+typedef enum truco_pending_bid {
+    TRUCO_PENDING_BID_NONE = 0,
+    TRUCO_PENDING_BID_TRUCO,
+    TRUCO_PENDING_BID_ENVIDO,
+    TRUCO_PENDING_BID_FLOR
+} truco_pending_bid;
+
 typedef enum truco_command {
     TRUCO_CMD_NONE = 0,
     TRUCO_CMD_START_HAND,
@@ -106,6 +114,7 @@ unsigned int truco_game_team_for_player(const truco_game *game,
                                         unsigned int player);
 truco_phase truco_game_phase(const truco_game *game);
 truco_hand_subphase truco_game_hand_subphase(const truco_game *game);
+truco_pending_bid truco_game_pending_bid(const truco_game *game);
 unsigned int truco_game_current_player(const truco_game *game);
 unsigned int truco_game_pending_truco_value(const truco_game *game);
 unsigned int truco_game_pending_envido_points(const truco_game *game);
