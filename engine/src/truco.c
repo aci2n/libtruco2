@@ -323,64 +323,82 @@ truco_status truco_game_set_flor_enabled(truco_game *game, int enabled) {
 
 truco_status truco_game_apply(truco_game *game, unsigned int player,
                               truco_command command) {
+  truco_status status;
+
   if (!is_valid_player(game, player)) {
     return TRUCO_ERR_INVALID_ARGUMENT;
   }
 
   switch (command) {
   case TRUCO_CMD_START_HAND:
-    return start_hand(game, player);
+    status = start_hand(game, player);
+    break;
   case TRUCO_CMD_PLAY_CARD_0:
-    return play_card(game, player, 0u);
+    status = play_card(game, player, 0u);
+    break;
   case TRUCO_CMD_PLAY_CARD_1:
-    return play_card(game, player, 1u);
+    status = play_card(game, player, 1u);
+    break;
   case TRUCO_CMD_PLAY_CARD_2:
-    return play_card(game, player, 2u);
+    status = play_card(game, player, 2u);
+    break;
   case TRUCO_CMD_RAISE_TRUCO:
-    return raise_truco(game, player);
+    status = raise_truco(game, player);
+    break;
   case TRUCO_CMD_CALL_ENVIDO:
-    return call_envido(game, player, ENVIDO);
+    status = call_envido(game, player, ENVIDO);
+    break;
   case TRUCO_CMD_CALL_REAL_ENVIDO:
-    return call_envido(game, player, REAL_ENVIDO);
+    status = call_envido(game, player, REAL_ENVIDO);
+    break;
   case TRUCO_CMD_CALL_FALTA_ENVIDO:
-    return call_envido(game, player, FALTA_ENVIDO);
+    status = call_envido(game, player, FALTA_ENVIDO);
+    break;
   case TRUCO_CMD_CALL_FLOR:
-    return call_flor(game, player);
+    status = call_flor(game, player);
+    break;
   case TRUCO_CMD_ACCEPT_BID:
     if (can_answer_envido(game, player)) {
-      return accept_envido(game, player);
+      status = accept_envido(game, player);
+    } else if (can_answer_flor(game, player)) {
+      status = accept_flor(game, player);
+    } else if (can_answer_truco(game, player)) {
+      status = accept_truco(game, player);
+    } else {
+      status = TRUCO_ERR_INVALID_STATE;
     }
-    if (can_answer_flor(game, player)) {
-      return accept_flor(game, player);
-    }
-    if (can_answer_truco(game, player)) {
-      return accept_truco(game, player);
-    }
-    return TRUCO_ERR_INVALID_STATE;
+    break;
   case TRUCO_CMD_REJECT_BID:
     if (can_answer_envido(game, player)) {
-      return decline_envido(game, player);
+      status = decline_envido(game, player);
+    } else if (can_answer_flor(game, player)) {
+      status = decline_flor(game, player);
+    } else if (can_answer_truco(game, player)) {
+      status = decline_truco(game, player);
+    } else {
+      status = TRUCO_ERR_INVALID_STATE;
     }
-    if (can_answer_flor(game, player)) {
-      return decline_flor(game, player);
-    }
-    if (can_answer_truco(game, player)) {
-      return decline_truco(game, player);
-    }
-    return TRUCO_ERR_INVALID_STATE;
+    break;
   case TRUCO_CMD_GO_TO_DECK:
-    return go_to_deck(game, player);
+    status = go_to_deck(game, player);
+    break;
   case TRUCO_CMD_NONE:
   default:
-    return TRUCO_ERR_INVALID_ARGUMENT;
+    status = TRUCO_ERR_INVALID_ARGUMENT;
+    break;
   }
+
+#ifdef DEBUG
+  if (status == TRUCO_OK) {
+    assert_hand_invariants(game);
+  }
+#endif
+  return status;
 }
 
 truco_status truco_game_legal_commands(const truco_game *game,
                                        unsigned int player,
                                        truco_legal_commands *out) {
-  unsigned int slot;
-
   if (out == 0 || !is_valid_player(game, player)) {
     return TRUCO_ERR_INVALID_ARGUMENT;
   }
@@ -392,57 +410,14 @@ truco_status truco_game_legal_commands(const truco_game *game,
     return TRUCO_OK;
   }
 
-  if (game->phase != TRUCO_PHASE_PLAYING) {
+  if (!hand_is_playing(game)) {
     return TRUCO_OK;
   }
 
-  for (slot = 0u; slot < TRUCO_HAND_CARDS; ++slot) {
-    if (can_play_card(game, player, slot)) {
-      add_legal_command(out, (truco_command)(TRUCO_CMD_PLAY_CARD_0 + slot));
-    }
-  }
-
-  if (can_raise_truco(game, player)) {
-    add_legal_command(out, TRUCO_CMD_RAISE_TRUCO);
-  }
-
-  if (can_answer_truco(game, player)) {
-    add_legal_command(out, TRUCO_CMD_ACCEPT_BID);
-    add_legal_command(out, TRUCO_CMD_REJECT_BID);
-  }
-
-  if (can_call_flor(game, player)) {
-    add_legal_command(out, TRUCO_CMD_CALL_FLOR);
-  }
-
-  if (can_answer_flor(game, player)) {
-    add_legal_command(out, TRUCO_CMD_ACCEPT_BID);
-    add_legal_command(out, TRUCO_CMD_REJECT_BID);
-  }
-
-  if (can_call_envido_initial(game, player, ENVIDO)) {
-    add_legal_command(out, TRUCO_CMD_CALL_ENVIDO);
-  }
-  if (can_call_envido_initial(game, player, REAL_ENVIDO)) {
-    add_legal_command(out, TRUCO_CMD_CALL_REAL_ENVIDO);
-  }
-  if (can_call_envido_initial(game, player, FALTA_ENVIDO)) {
-    add_legal_command(out, TRUCO_CMD_CALL_FALTA_ENVIDO);
-  }
-
-  if (can_answer_envido(game, player)) {
-    add_legal_command(out, TRUCO_CMD_ACCEPT_BID);
-    add_legal_command(out, TRUCO_CMD_REJECT_BID);
-    if (can_counter_envido(game, player, ENVIDO)) {
-      add_legal_command(out, TRUCO_CMD_CALL_ENVIDO);
-    }
-    if (can_counter_envido(game, player, REAL_ENVIDO)) {
-      add_legal_command(out, TRUCO_CMD_CALL_REAL_ENVIDO);
-    }
-    if (can_counter_envido(game, player, FALTA_ENVIDO)) {
-      add_legal_command(out, TRUCO_CMD_CALL_FALTA_ENVIDO);
-    }
-  }
+  legal_add_trick_play_commands(game, player, out);
+  legal_add_truco_commands(game, player, out);
+  legal_add_flor_commands(game, player, out);
+  legal_add_envido_commands(game, player, out);
 
   if (can_go_to_deck(game, player)) {
     add_legal_command(out, TRUCO_CMD_GO_TO_DECK);
@@ -1674,6 +1649,72 @@ static void add_legal_command(truco_legal_commands *out,
                               truco_command command) {
   if (out->count < TRUCO_MAX_LEGAL_COMMANDS) {
     out->commands[out->count++] = command;
+  }
+}
+
+static void legal_add_trick_play_commands(const truco_game *game,
+                                          unsigned int player,
+                                          truco_legal_commands *out) {
+  unsigned int slot;
+
+  for (slot = 0u; slot < TRUCO_HAND_CARDS; ++slot) {
+    if (can_play_card(game, player, slot)) {
+      add_legal_command(out, (truco_command)(TRUCO_CMD_PLAY_CARD_0 + slot));
+    }
+  }
+}
+
+static void legal_add_truco_commands(const truco_game *game,
+                                     unsigned int player,
+                                     truco_legal_commands *out) {
+  if (can_raise_truco(game, player)) {
+    add_legal_command(out, TRUCO_CMD_RAISE_TRUCO);
+  }
+
+  if (can_answer_truco(game, player)) {
+    add_legal_command(out, TRUCO_CMD_ACCEPT_BID);
+    add_legal_command(out, TRUCO_CMD_REJECT_BID);
+  }
+}
+
+static void legal_add_flor_commands(const truco_game *game,
+                                    unsigned int player,
+                                    truco_legal_commands *out) {
+  if (can_call_flor(game, player)) {
+    add_legal_command(out, TRUCO_CMD_CALL_FLOR);
+  }
+
+  if (can_answer_flor(game, player)) {
+    add_legal_command(out, TRUCO_CMD_ACCEPT_BID);
+    add_legal_command(out, TRUCO_CMD_REJECT_BID);
+  }
+}
+
+static void legal_add_envido_commands(const truco_game *game,
+                                      unsigned int player,
+                                      truco_legal_commands *out) {
+  if (can_call_envido_initial(game, player, ENVIDO)) {
+    add_legal_command(out, TRUCO_CMD_CALL_ENVIDO);
+  }
+  if (can_call_envido_initial(game, player, REAL_ENVIDO)) {
+    add_legal_command(out, TRUCO_CMD_CALL_REAL_ENVIDO);
+  }
+  if (can_call_envido_initial(game, player, FALTA_ENVIDO)) {
+    add_legal_command(out, TRUCO_CMD_CALL_FALTA_ENVIDO);
+  }
+
+  if (can_answer_envido(game, player)) {
+    add_legal_command(out, TRUCO_CMD_ACCEPT_BID);
+    add_legal_command(out, TRUCO_CMD_REJECT_BID);
+    if (can_counter_envido(game, player, ENVIDO)) {
+      add_legal_command(out, TRUCO_CMD_CALL_ENVIDO);
+    }
+    if (can_counter_envido(game, player, REAL_ENVIDO)) {
+      add_legal_command(out, TRUCO_CMD_CALL_REAL_ENVIDO);
+    }
+    if (can_counter_envido(game, player, FALTA_ENVIDO)) {
+      add_legal_command(out, TRUCO_CMD_CALL_FALTA_ENVIDO);
+    }
   }
 }
 
