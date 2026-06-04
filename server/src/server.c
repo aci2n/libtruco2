@@ -11,6 +11,7 @@ void truco_server_reset(void)
 }
 
 truco_server_status truco_server_host(unsigned int player_count,
+                                      int flor_enabled,
                                       char token_out[TRUCO_SERVER_TOKEN_LEN + 1u],
                                       unsigned int *player_out,
                                       char *response,
@@ -22,7 +23,7 @@ truco_server_status truco_server_host(unsigned int player_count,
         return TRUCO_SERVER_ERR_INVALID;
     }
 
-    session = truco_server_session_host(player_count, token_out, player_out);
+    session = truco_server_session_host(player_count, flor_enabled, token_out, player_out);
     if (session == 0) {
         snprintf(response, response_size, "error: could not host session\r\n");
         return TRUCO_SERVER_ERR_FULL;

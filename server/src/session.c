@@ -102,6 +102,7 @@ void truco_server_session_reset(void)
 }
 
 struct truco_server_session *truco_server_session_host(unsigned int player_count,
+                                                     int flor_enabled,
                                                      char token_out[TRUCO_SERVER_TOKEN_LEN + 1u],
                                                      unsigned int *player_out)
 {
@@ -126,6 +127,13 @@ struct truco_server_session *truco_server_session_host(unsigned int player_count
     }
 
     if (truco_game_set_player_count(session->game, player_count) != TRUCO_OK) {
+        truco_game_destroy(session->game);
+        session->active = 0;
+        return 0;
+    }
+
+    if (flor_enabled &&
+        truco_game_set_flor_enabled(session->game, 1) != TRUCO_OK) {
         truco_game_destroy(session->game);
         session->active = 0;
         return 0;

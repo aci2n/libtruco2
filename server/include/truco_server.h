@@ -23,6 +23,7 @@ typedef enum truco_server_status {
 void truco_server_reset(void);
 
 truco_server_status truco_server_host(unsigned int player_count,
+                                      int flor_enabled,
                                       char token_out[TRUCO_SERVER_TOKEN_LEN + 1u],
                                       unsigned int *player_out,
                                       char *response,

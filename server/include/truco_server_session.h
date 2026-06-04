@@ -10,6 +10,7 @@ struct truco_server_session;
 void truco_server_session_reset(void);
 
 struct truco_server_session *truco_server_session_host(unsigned int player_count,
+                                                       int flor_enabled,
                                                        char token_out[TRUCO_SERVER_TOKEN_LEN + 1u],
                                                        unsigned int *player_out);
 
@@ -43,7 +44,9 @@ void truco_server_normalize_line(char *line);
 
 void truco_server_uppercase_line(char *line);
 
-int truco_server_parse_host(const char *line, unsigned int *player_count_out);
+int truco_server_parse_host(const char *line,
+                            unsigned int *player_count_out,
+                            int *flor_enabled_out);
 
 int truco_server_parse_join(const char *line, char token_out[TRUCO_SERVER_TOKEN_LEN + 1u]);
 

@@ -200,6 +200,10 @@ int truco_server_format_view(struct truco_server_session *session,
                       truco_game_score(game, 0u), truco_game_score(game, 1u)) != 0) {
         return -1;
     }
+    if (append_printf(response, response_size, &offset, "rules: flor=%s\r\n",
+                      truco_game_flor_enabled(game) ? "on" : "off") != 0) {
+        return -1;
+    }
 
     pending_truco = truco_game_pending_truco_value(game);
     pending_envido = truco_game_pending_envido_points(game);
@@ -368,13 +372,20 @@ void truco_server_uppercase_line(char *line)
     uppercase_word(line);
 }
 
-int truco_server_parse_host(const char *line, unsigned int *player_count_out)
+int truco_server_parse_host(const char *line,
+                            unsigned int *player_count_out,
+                            int *flor_enabled_out)
 {
     char buffer[64];
-    char word[16];
+    const char *cursor;
+    unsigned int count = 2u;
+    int flor = 0;
 
     if (line == 0 || player_count_out == 0) {
         return 0;
+    }
+    if (flor_enabled_out != 0) {
+        *flor_enabled_out = 0;
     }
 
     strncpy(buffer, line, sizeof(buffer) - 1u);
@@ -382,24 +393,53 @@ int truco_server_parse_host(const char *line, unsigned int *player_count_out)
     trim_line(buffer);
     uppercase_word(buffer);
 
-    if (strcmp(buffer, "HOST") == 0) {
-        *player_count_out = 2u;
-        return 1;
+    if (strncmp(buffer, "HOST", 4) != 0) {
+        return 0;
     }
-    if (sscanf(buffer, "HOST %15s", word) == 1) {
-        unsigned int count = 0u;
+    if (buffer[4] != '\0' && buffer[4] != ' ' && buffer[4] != '\t') {
+        return 0;
+    }
+
+    cursor = buffer + 4u;
+    while (*cursor == ' ' || *cursor == '\t') {
+        ++cursor;
+    }
+
+    while (*cursor != '\0') {
+        char word[16];
+        size_t word_len = 0u;
+
+        while (*cursor == ' ' || *cursor == '\t') {
+            ++cursor;
+        }
+        if (*cursor == '\0') {
+            break;
+        }
+
+        while (cursor[word_len] != '\0' && cursor[word_len] != ' ' &&
+               cursor[word_len] != '\t' && word_len + 1u < sizeof(word)) {
+            word[word_len] = cursor[word_len];
+            ++word_len;
+        }
+        word[word_len] = '\0';
+        cursor += word_len;
 
         if (strcmp(word, "2") == 0) {
             count = 2u;
         } else if (strcmp(word, "4") == 0) {
             count = 4u;
+        } else if (strcmp(word, "FLOR") == 0) {
+            flor = 1;
         } else {
             return 0;
         }
-        *player_count_out = count;
-        return 1;
     }
-    return 0;
+
+    *player_count_out = count;
+    if (flor_enabled_out != 0) {
+        *flor_enabled_out = flor;
+    }
+    return 1;
 }
 
 int truco_server_parse_join(const char *line, char token_out[TRUCO_SERVER_TOKEN_LEN + 1u])
