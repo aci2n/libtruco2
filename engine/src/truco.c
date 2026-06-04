@@ -313,25 +313,25 @@ truco_status truco_game_apply(truco_game *game, unsigned int player,
   case TRUCO_CMD_CALL_FLOR:
     return call_flor(game, player);
   case TRUCO_CMD_ACCEPT_BID:
-    if (can_answer_truco(game, player)) {
-      return accept_truco(game, player);
+    if (can_answer_envido(game, player)) {
+      return accept_envido(game, player);
     }
     if (can_answer_flor(game, player)) {
       return accept_flor(game, player);
     }
-    if (can_answer_envido(game, player)) {
-      return accept_envido(game, player);
+    if (can_answer_truco(game, player)) {
+      return accept_truco(game, player);
     }
     return TRUCO_ERR_INVALID_STATE;
   case TRUCO_CMD_REJECT_BID:
-    if (can_answer_truco(game, player)) {
-      return decline_truco(game, player);
+    if (can_answer_envido(game, player)) {
+      return decline_envido(game, player);
     }
     if (can_answer_flor(game, player)) {
       return decline_flor(game, player);
     }
-    if (can_answer_envido(game, player)) {
-      return decline_envido(game, player);
+    if (can_answer_truco(game, player)) {
+      return decline_truco(game, player);
     }
     return TRUCO_ERR_INVALID_STATE;
   case TRUCO_CMD_GO_TO_DECK:
@@ -1005,7 +1005,7 @@ static int can_answer_truco(const truco_game *game, unsigned int player) {
   unsigned int player_team;
 
   if (!is_valid_player(game, player) || game->phase != TRUCO_PHASE_PLAYING ||
-      game->pending_truco_value == 0u) {
+      game->pending_truco_value == 0u || game->envido_pending_team >= 0) {
     return 0;
   }
 
@@ -1016,14 +1016,21 @@ static int can_answer_truco(const truco_game *game, unsigned int player) {
 static int can_call_envido(const truco_game *game, unsigned int player,
                            envido_bid bid) {
   if (!is_valid_player(game, player) || !is_valid_bid(bid) ||
-      game->phase != TRUCO_PHASE_PLAYING || player != game->current_player ||
-      game->pending_truco_value != 0u || game->flor_pending_team >= 0 ||
-      game->envido_resolved || game->envido_pending_team >= 0 ||
-      game->flor_blocks_envido || has_any_card_been_played(game)) {
+      game->phase != TRUCO_PHASE_PLAYING || game->envido_resolved ||
+      game->envido_pending_team >= 0 || game->flor_blocks_envido ||
+      has_any_card_been_played(game)) {
     return 0;
   }
 
   if (game->flor_enabled && truco_has_flor(game->hands[player])) {
+    return 0;
+  }
+
+  if (game->pending_truco_value != 0u) {
+    return can_answer_truco(game, player);
+  }
+
+  if (player != game->current_player || game->flor_pending_team >= 0) {
     return 0;
   }
 
@@ -1475,24 +1482,15 @@ static truco_status go_to_deck(truco_game *game, unsigned int player) {
 
   player_team = team_for(game, player);
 
-  if (can_answer_truco(game, player)) {
-    winner_team = (unsigned int)game->pending_truco_team;
-    game->pending_truco_value = 0u;
-    game->pending_truco_team = TRUCO_NO_TEAM;
-    if (!game->envido_resolved) {
-      add_score(game, winner_team, 1u);
-      game->envido_resolved = 1;
-    }
-    finish_hand(game, winner_team);
-    return TRUCO_OK;
-  }
-
   if (can_answer_envido(game, player)) {
     winner_team = (unsigned int)game->envido_pending_team;
     add_score(game, winner_team, 1u);
     game->envido_pending_team = TRUCO_NO_TEAM;
     game->envido_pending_points = 0u;
     game->envido_resolved = 1;
+    if (game->pending_truco_value != 0u) {
+      return TRUCO_OK;
+    }
     finish_hand(game, opposing_team(player_team));
     return TRUCO_OK;
   }
@@ -1503,6 +1501,18 @@ static truco_status go_to_deck(truco_game *game, unsigned int player) {
     game->flor_pending_team = TRUCO_NO_TEAM;
     game->flor_pending_points = 0u;
     game->flor_resolved = 1;
+    return TRUCO_OK;
+  }
+
+  if (can_answer_truco(game, player)) {
+    winner_team = (unsigned int)game->pending_truco_team;
+    game->pending_truco_value = 0u;
+    game->pending_truco_team = TRUCO_NO_TEAM;
+    if (!game->envido_resolved) {
+      add_score(game, winner_team, 1u);
+      game->envido_resolved = 1;
+    }
+    finish_hand(game, winner_team);
     return TRUCO_OK;
   }
 
