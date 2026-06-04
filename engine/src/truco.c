@@ -3,6 +3,9 @@
 
 #include <stdlib.h>
 #include <string.h>
+#ifdef DEBUG
+#include <assert.h>
+#endif
 
 struct truco_game {
   unsigned int player_count;
@@ -49,6 +52,14 @@ typedef enum envido_bid {
   FALTA_ENVIDO = -1    /* sentinel: stake from falta_envido_points(), not 2/3 */
 } envido_bid;
 
+typedef enum truco_hand_subphase {
+  TRUCO_SUB_NONE = 0,
+  TRUCO_SUB_TRICK,
+  TRUCO_SUB_TRUCO_PENDING,
+  TRUCO_SUB_ENVIDO_PENDING,
+  TRUCO_SUB_FLOR_PENDING
+} truco_hand_subphase;
+
 /*
  * Internal sentinels (public getters document their own return values).
  *
@@ -90,6 +101,14 @@ static void resolve_current_trick(truco_game *game);
 static void finish_hand(truco_game *game, unsigned int winner_team);
 static int is_valid_bid(envido_bid bid);
 static int is_valid_player(const truco_game *game, unsigned int player);
+static int hand_is_playing(const truco_game *game);
+static int no_bid_interrupt_pending(const truco_game *game);
+static int is_current_player(const truco_game *game, unsigned int player);
+static int flor_blocks_player_play(const truco_game *game, unsigned int player);
+static truco_hand_subphase hand_subphase(const truco_game *game);
+#ifdef DEBUG
+static void assert_hand_invariants(const truco_game *game);
+#endif
 static int can_start_hand(const truco_game *game, unsigned int player);
 static unsigned int next_truco_value(const truco_game *game);
 static int can_play_card(const truco_game *game, unsigned int player, unsigned int card_index);
@@ -966,6 +985,53 @@ static int is_valid_bid(envido_bid bid) {
 static int is_valid_player(const truco_game *game, unsigned int player) {
   return game != 0 && player < game->player_count;
 }
+
+static int hand_is_playing(const truco_game *game) {
+  return game != 0 && game->phase == TRUCO_PHASE_PLAYING;
+}
+
+static int no_bid_interrupt_pending(const truco_game *game) {
+  return game->pending_truco_value == 0u && game->envido_pending_team < 0 &&
+         game->flor_pending_team < 0;
+}
+
+static int is_current_player(const truco_game *game, unsigned int player) {
+  return is_valid_player(game, player) && player == game->current_player;
+}
+
+static int flor_blocks_player_play(const truco_game *game, unsigned int player) {
+  return game->flor_enabled != 0u && !game->flor_resolved &&
+         truco_has_flor(game->hands[player]);
+}
+
+static truco_hand_subphase hand_subphase(const truco_game *game) {
+  if (!hand_is_playing(game)) {
+    return TRUCO_SUB_NONE;
+  }
+  if (game->envido_pending_team >= 0) {
+    return TRUCO_SUB_ENVIDO_PENDING;
+  }
+  if (game->flor_pending_team >= 0) {
+    return TRUCO_SUB_FLOR_PENDING;
+  }
+  if (game->pending_truco_value != 0u) {
+    return TRUCO_SUB_TRUCO_PENDING;
+  }
+  return TRUCO_SUB_TRICK;
+}
+
+#ifdef DEBUG
+static void assert_hand_invariants(const truco_game *game) {
+  if (!hand_is_playing(game)) {
+    return;
+  }
+
+  if (game->flor_pending_team >= 0) {
+    assert(game->envido_pending_team < 0);
+    assert(game->pending_truco_value == 0u);
+  }
+}
+#endif
 
 static unsigned int dealing_player(const truco_game *game)
 {
