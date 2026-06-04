@@ -58,15 +58,21 @@ The API uses explicit status returns rather than `errno`. Functions return
 Clients mutate game state with scoped `truco_command` values:
 
 ```c
-truco_game_apply(&game, player, TRUCO_CMD_PLAY_CARD_0);
-truco_game_apply(&game, player, TRUCO_CMD_CALL_REAL_ENVIDO);
-truco_game_apply(&game, player, TRUCO_CMD_ACCEPT_BID);
+truco_status status =
+    truco_game_apply(&game, player, TRUCO_CMD_PLAY_CARD_0);
+if (status != TRUCO_OK) { /* handle error */ }
 ```
 
-Specific operations such as playing a card, calling Envido, accepting a bid, or
-starting a hand are private helpers inside `src/truco.c`. The public API stays
-small and protocol-like: clients submit a command and the engine validates and
-applies it.
+The engine is split into modules:
+
+- `src/truco_cards.c` — deck construction, shuffle, card ranking, envido/flor points
+- `src/truco_hand.c` — hand rules (`truco_hand_apply`, legality, tricks, bids)
+- `src/truco_game.c` — match lifecycle, configuration, public getters
+
+`truco_game_apply` delegates to `truco_hand_apply` and returns `truco_status`.
+Hand state lives in nested `truco_hand`; match fields (scores, dealer, phase)
+stay on `truco_game`. Each `truco_game` is independent (safe for multiple
+concurrent games in one process).
 
 Clients should use `truco_game_legal_commands` to discover valid commands for a
 player before calling `truco_game_apply`. The caller allocates a
@@ -81,8 +87,10 @@ Envido.
 The command list makes clients simple: render each command, let the user or bot
 choose one, then pass the chosen enum back to `truco_game_apply`.
 
-Internally, legal action discovery uses the same `can_*` predicates as the
-dispatch helpers. This keeps command availability and command execution aligned.
+`TRUCO_CMD_ACCEPT_BID` and `TRUCO_CMD_REJECT_BID` dispatch from
+`truco_game_pending_bid()` (envido, then flor, then truco). Use that getter to
+label UI actions; the engine validates the answering seat with `can_*` helpers
+for the active pending bid only.
 
 Turn restrictions:
 
@@ -106,15 +114,20 @@ truco_game_set_player_count(game, 4);
 my_free(game);
 ```
 
-Internally, `struct truco_game` contains fixed arrays sized by
-`TRUCO_MAX_PLAYERS` and `TRUCO_HAND_CARDS`:
+Internally, `struct truco_game` (see `src/truco_hand_internal.h`) holds match
+fields plus a nested `truco_hand` with fixed arrays sized by `TRUCO_MAX_PLAYERS`
+and `TRUCO_HAND_CARDS`:
 
-- `hands[player][slot]` — cards still in hand
-- `played_slots[player][slot]` — which hand cards that player already played (0/1 per slot)
-- `trick_cards[trick][player]` — card on the table for that trick
-- `trick_played[trick][player]` — whether that player already played in that trick (0/1)
-- `trick_winner_team[trick]`
-- `trick_winner_player[trick]`
+- `hand.hands[player][slot]` — cards still in hand
+- `hand.played_slots[player][slot]` — which hand cards that player already played
+- `hand.trick_cards[trick][player]` — card on the table for that trick
+- `hand.trick_played[trick][player]` — whether that player already played in that trick
+- `hand.trick_winner_team[trick]` / `hand.trick_winner_player[trick]`
+
+Use `truco_game_hand_subphase()` for interrupt mode during `TRUCO_PHASE_PLAYING`
+(envido, flor, truco, or open trick play). Use `truco_game_pending_bid()` when
+you only care which bid accept/reject/go-to-deck-as-fold targets (returns
+`TRUCO_PENDING_BID_NONE` during normal trick play).
 
 This makes embedding simple for games, servers, bots, tests, and simulations.
 Callers can place `truco_game` inside larger state containers or serialize the

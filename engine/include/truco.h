@@ -8,7 +8,7 @@ extern "C" {
 #endif
 
 #define TRUCO_VERSION_MAJOR 0
-#define TRUCO_VERSION_MINOR 2
+#define TRUCO_VERSION_MINOR 3
 #define TRUCO_VERSION_PATCH 0
 
 #define TRUCO_HAND_CARDS 3u
@@ -41,6 +41,23 @@ typedef enum truco_phase {
     TRUCO_PHASE_GAME_OVER = 3
 } truco_phase;
 
+/* Derived interrupt mode while TRUCO_PHASE_PLAYING (see truco_game_hand_subphase). */
+typedef enum truco_hand_subphase {
+    TRUCO_HAND_SUB_NONE = 0,
+    TRUCO_HAND_SUB_TRICK,
+    TRUCO_HAND_SUB_TRUCO_PENDING,
+    TRUCO_HAND_SUB_ENVIDO_PENDING,
+    TRUCO_HAND_SUB_FLOR_PENDING
+} truco_hand_subphase;
+
+/* Which bid ACCEPT_BID / REJECT_BID / GO_TO_DECK (as fold) applies to; envido > flor > truco. */
+typedef enum truco_pending_bid {
+    TRUCO_PENDING_BID_NONE = 0,
+    TRUCO_PENDING_BID_TRUCO,
+    TRUCO_PENDING_BID_ENVIDO,
+    TRUCO_PENDING_BID_FLOR
+} truco_pending_bid;
+
 typedef enum truco_command {
     TRUCO_CMD_NONE = 0,
     TRUCO_CMD_START_HAND,
@@ -69,15 +86,11 @@ typedef struct truco_legal_commands {
 
 typedef struct truco_game truco_game;
 
-/* Byte size of truco_game for custom allocators (uninitialized memory is ok). */
+/* Match + hand state (hand fields live in nested truco_hand; see implementation.md). */
 size_t truco_game_size(void);
-/* Allocates with malloc and factory-resets. Pair with truco_game_destroy. */
 truco_game *truco_game_create(void);
-/* Factory reset on caller-owned storage (truco_game_size bytes). Never free here. */
 truco_status truco_game_init(truco_game *game);
-/* Frees memory from truco_game_create. Do not use on init-only buffers. */
 void truco_game_destroy(truco_game *game);
-/* destroy + *game = 0. */
 void truco_game_delete(truco_game **game);
 
 truco_status truco_game_set_player_count(truco_game *game, unsigned int player_count);
@@ -100,6 +113,8 @@ unsigned int truco_game_player_count(const truco_game *game);
 unsigned int truco_game_team_for_player(const truco_game *game,
                                         unsigned int player);
 truco_phase truco_game_phase(const truco_game *game);
+truco_hand_subphase truco_game_hand_subphase(const truco_game *game);
+truco_pending_bid truco_game_pending_bid(const truco_game *game);
 unsigned int truco_game_current_player(const truco_game *game);
 unsigned int truco_game_pending_truco_value(const truco_game *game);
 unsigned int truco_game_pending_envido_points(const truco_game *game);
@@ -108,16 +123,13 @@ unsigned int truco_game_next_truco_value(const truco_game *game);
 int truco_game_flor_enabled(const truco_game *game);
 int truco_game_player_has_flor(const truco_game *game, unsigned int player);
 unsigned int truco_game_score(const truco_game *game, unsigned int team);
-/* 0/1 winning team, or -1 if the hand is not over yet */
 int truco_game_hand_winner(const truco_game *game);
-/* 0/1 trick winner, -1 parda, -2 if trick index is invalid or not played yet */
 int truco_game_trick_winner(const truco_game *game, unsigned int trick);
 
 truco_status truco_game_hand_card(const truco_game *game,
                                   unsigned int player,
                                   unsigned int slot,
                                   truco_card *card_out);
-/* card on the table for trick/player; ERR_INVALID_STATE if not played yet */
 truco_status truco_game_trick_card(const truco_game *game,
                                    unsigned int trick,
                                    unsigned int player,
@@ -127,7 +139,6 @@ unsigned int truco_game_hand_flor(const truco_game *game, unsigned int player);
 truco_status truco_game_set_hand(truco_game *game,
                                  unsigned int player,
                                  const truco_card cards[TRUCO_HAND_CARDS]);
-/* Test/simulation helper: set team score before or between hands. */
 truco_status truco_game_set_score(truco_game *game,
                                   unsigned int team,
                                   unsigned int score);
