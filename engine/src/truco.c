@@ -3,6 +3,9 @@
 
 #include <stdlib.h>
 #include <string.h>
+#ifdef DEBUG
+#include <assert.h>
+#endif
 
 struct truco_game {
   unsigned int player_count;
@@ -49,6 +52,14 @@ typedef enum envido_bid {
   FALTA_ENVIDO = -1    /* sentinel: stake from falta_envido_points(), not 2/3 */
 } envido_bid;
 
+typedef enum truco_hand_subphase {
+  TRUCO_SUB_NONE = 0,
+  TRUCO_SUB_TRICK,
+  TRUCO_SUB_TRUCO_PENDING,
+  TRUCO_SUB_ENVIDO_PENDING,
+  TRUCO_SUB_FLOR_PENDING
+} truco_hand_subphase;
+
 /*
  * Internal sentinels (public getters document their own return values).
  *
@@ -90,6 +101,14 @@ static void resolve_current_trick(truco_game *game);
 static void finish_hand(truco_game *game, unsigned int winner_team);
 static int is_valid_bid(envido_bid bid);
 static int is_valid_player(const truco_game *game, unsigned int player);
+static int hand_is_playing(const truco_game *game);
+static int no_bid_interrupt_pending(const truco_game *game);
+static int is_current_player(const truco_game *game, unsigned int player);
+static int flor_blocks_player_play(const truco_game *game, unsigned int player);
+static truco_hand_subphase hand_subphase(const truco_game *game);
+#ifdef DEBUG
+static void assert_hand_invariants(const truco_game *game);
+#endif
 static int can_start_hand(const truco_game *game, unsigned int player);
 static unsigned int next_truco_value(const truco_game *game);
 static int can_play_card(const truco_game *game, unsigned int player, unsigned int card_index);
@@ -119,6 +138,18 @@ static truco_status decline_envido(truco_game *game, unsigned int player);
 static int can_go_to_deck(const truco_game *game, unsigned int player);
 static truco_status go_to_deck(truco_game *game, unsigned int player);
 static void add_legal_command(truco_legal_commands *out, truco_command command);
+static void legal_add_trick_play_commands(const truco_game *game,
+                                          unsigned int player,
+                                          truco_legal_commands *out);
+static void legal_add_truco_commands(const truco_game *game,
+                                     unsigned int player,
+                                     truco_legal_commands *out);
+static void legal_add_flor_commands(const truco_game *game,
+                                    unsigned int player,
+                                    truco_legal_commands *out);
+static void legal_add_envido_commands(const truco_game *game,
+                                      unsigned int player,
+                                      truco_legal_commands *out);
 
 /* lifecycle */
 
@@ -292,64 +323,82 @@ truco_status truco_game_set_flor_enabled(truco_game *game, int enabled) {
 
 truco_status truco_game_apply(truco_game *game, unsigned int player,
                               truco_command command) {
+  truco_status status;
+
   if (!is_valid_player(game, player)) {
     return TRUCO_ERR_INVALID_ARGUMENT;
   }
 
   switch (command) {
   case TRUCO_CMD_START_HAND:
-    return start_hand(game, player);
+    status = start_hand(game, player);
+    break;
   case TRUCO_CMD_PLAY_CARD_0:
-    return play_card(game, player, 0u);
+    status = play_card(game, player, 0u);
+    break;
   case TRUCO_CMD_PLAY_CARD_1:
-    return play_card(game, player, 1u);
+    status = play_card(game, player, 1u);
+    break;
   case TRUCO_CMD_PLAY_CARD_2:
-    return play_card(game, player, 2u);
+    status = play_card(game, player, 2u);
+    break;
   case TRUCO_CMD_RAISE_TRUCO:
-    return raise_truco(game, player);
+    status = raise_truco(game, player);
+    break;
   case TRUCO_CMD_CALL_ENVIDO:
-    return call_envido(game, player, ENVIDO);
+    status = call_envido(game, player, ENVIDO);
+    break;
   case TRUCO_CMD_CALL_REAL_ENVIDO:
-    return call_envido(game, player, REAL_ENVIDO);
+    status = call_envido(game, player, REAL_ENVIDO);
+    break;
   case TRUCO_CMD_CALL_FALTA_ENVIDO:
-    return call_envido(game, player, FALTA_ENVIDO);
+    status = call_envido(game, player, FALTA_ENVIDO);
+    break;
   case TRUCO_CMD_CALL_FLOR:
-    return call_flor(game, player);
+    status = call_flor(game, player);
+    break;
   case TRUCO_CMD_ACCEPT_BID:
     if (can_answer_envido(game, player)) {
-      return accept_envido(game, player);
+      status = accept_envido(game, player);
+    } else if (can_answer_flor(game, player)) {
+      status = accept_flor(game, player);
+    } else if (can_answer_truco(game, player)) {
+      status = accept_truco(game, player);
+    } else {
+      status = TRUCO_ERR_INVALID_STATE;
     }
-    if (can_answer_flor(game, player)) {
-      return accept_flor(game, player);
-    }
-    if (can_answer_truco(game, player)) {
-      return accept_truco(game, player);
-    }
-    return TRUCO_ERR_INVALID_STATE;
+    break;
   case TRUCO_CMD_REJECT_BID:
     if (can_answer_envido(game, player)) {
-      return decline_envido(game, player);
+      status = decline_envido(game, player);
+    } else if (can_answer_flor(game, player)) {
+      status = decline_flor(game, player);
+    } else if (can_answer_truco(game, player)) {
+      status = decline_truco(game, player);
+    } else {
+      status = TRUCO_ERR_INVALID_STATE;
     }
-    if (can_answer_flor(game, player)) {
-      return decline_flor(game, player);
-    }
-    if (can_answer_truco(game, player)) {
-      return decline_truco(game, player);
-    }
-    return TRUCO_ERR_INVALID_STATE;
+    break;
   case TRUCO_CMD_GO_TO_DECK:
-    return go_to_deck(game, player);
+    status = go_to_deck(game, player);
+    break;
   case TRUCO_CMD_NONE:
   default:
-    return TRUCO_ERR_INVALID_ARGUMENT;
+    status = TRUCO_ERR_INVALID_ARGUMENT;
+    break;
   }
+
+#ifdef DEBUG
+  if (status == TRUCO_OK) {
+    assert_hand_invariants(game);
+  }
+#endif
+  return status;
 }
 
 truco_status truco_game_legal_commands(const truco_game *game,
                                        unsigned int player,
                                        truco_legal_commands *out) {
-  unsigned int slot;
-
   if (out == 0 || !is_valid_player(game, player)) {
     return TRUCO_ERR_INVALID_ARGUMENT;
   }
@@ -361,57 +410,14 @@ truco_status truco_game_legal_commands(const truco_game *game,
     return TRUCO_OK;
   }
 
-  if (game->phase != TRUCO_PHASE_PLAYING) {
+  if (!hand_is_playing(game)) {
     return TRUCO_OK;
   }
 
-  for (slot = 0u; slot < TRUCO_HAND_CARDS; ++slot) {
-    if (can_play_card(game, player, slot)) {
-      add_legal_command(out, (truco_command)(TRUCO_CMD_PLAY_CARD_0 + slot));
-    }
-  }
-
-  if (can_raise_truco(game, player)) {
-    add_legal_command(out, TRUCO_CMD_RAISE_TRUCO);
-  }
-
-  if (can_answer_truco(game, player)) {
-    add_legal_command(out, TRUCO_CMD_ACCEPT_BID);
-    add_legal_command(out, TRUCO_CMD_REJECT_BID);
-  }
-
-  if (can_call_flor(game, player)) {
-    add_legal_command(out, TRUCO_CMD_CALL_FLOR);
-  }
-
-  if (can_answer_flor(game, player)) {
-    add_legal_command(out, TRUCO_CMD_ACCEPT_BID);
-    add_legal_command(out, TRUCO_CMD_REJECT_BID);
-  }
-
-  if (can_call_envido_initial(game, player, ENVIDO)) {
-    add_legal_command(out, TRUCO_CMD_CALL_ENVIDO);
-  }
-  if (can_call_envido_initial(game, player, REAL_ENVIDO)) {
-    add_legal_command(out, TRUCO_CMD_CALL_REAL_ENVIDO);
-  }
-  if (can_call_envido_initial(game, player, FALTA_ENVIDO)) {
-    add_legal_command(out, TRUCO_CMD_CALL_FALTA_ENVIDO);
-  }
-
-  if (can_answer_envido(game, player)) {
-    add_legal_command(out, TRUCO_CMD_ACCEPT_BID);
-    add_legal_command(out, TRUCO_CMD_REJECT_BID);
-    if (can_counter_envido(game, player, ENVIDO)) {
-      add_legal_command(out, TRUCO_CMD_CALL_ENVIDO);
-    }
-    if (can_counter_envido(game, player, REAL_ENVIDO)) {
-      add_legal_command(out, TRUCO_CMD_CALL_REAL_ENVIDO);
-    }
-    if (can_counter_envido(game, player, FALTA_ENVIDO)) {
-      add_legal_command(out, TRUCO_CMD_CALL_FALTA_ENVIDO);
-    }
-  }
+  legal_add_trick_play_commands(game, player, out);
+  legal_add_truco_commands(game, player, out);
+  legal_add_flor_commands(game, player, out);
+  legal_add_envido_commands(game, player, out);
 
   if (can_go_to_deck(game, player)) {
     add_legal_command(out, TRUCO_CMD_GO_TO_DECK);
@@ -967,6 +973,53 @@ static int is_valid_player(const truco_game *game, unsigned int player) {
   return game != 0 && player < game->player_count;
 }
 
+static int hand_is_playing(const truco_game *game) {
+  return game != 0 && game->phase == TRUCO_PHASE_PLAYING;
+}
+
+static int no_bid_interrupt_pending(const truco_game *game) {
+  return game->pending_truco_value == 0u && game->envido_pending_team < 0 &&
+         game->flor_pending_team < 0;
+}
+
+static int is_current_player(const truco_game *game, unsigned int player) {
+  return is_valid_player(game, player) && player == game->current_player;
+}
+
+static int flor_blocks_player_play(const truco_game *game, unsigned int player) {
+  return game->flor_enabled != 0u && !game->flor_resolved &&
+         truco_has_flor(game->hands[player]);
+}
+
+static truco_hand_subphase hand_subphase(const truco_game *game) {
+  if (!hand_is_playing(game)) {
+    return TRUCO_SUB_NONE;
+  }
+  if (game->envido_pending_team >= 0) {
+    return TRUCO_SUB_ENVIDO_PENDING;
+  }
+  if (game->flor_pending_team >= 0) {
+    return TRUCO_SUB_FLOR_PENDING;
+  }
+  if (game->pending_truco_value != 0u) {
+    return TRUCO_SUB_TRUCO_PENDING;
+  }
+  return TRUCO_SUB_TRICK;
+}
+
+#ifdef DEBUG
+static void assert_hand_invariants(const truco_game *game) {
+  if (!hand_is_playing(game)) {
+    return;
+  }
+
+  if (game->flor_pending_team >= 0) {
+    assert(game->envido_pending_team < 0);
+    assert(game->pending_truco_value == 0u);
+  }
+}
+#endif
+
 static unsigned int dealing_player(const truco_game *game)
 {
   if (game->phase == TRUCO_PHASE_READY) {
@@ -990,21 +1043,18 @@ static unsigned int next_truco_value(const truco_game *game) {
 static int can_play_card(const truco_game *game, unsigned int player,
                          unsigned int card_index) {
   return is_valid_player(game, player) && card_index < TRUCO_HAND_CARDS &&
-         game->phase == TRUCO_PHASE_PLAYING &&
-         game->pending_truco_value == 0u && game->envido_pending_team < 0 &&
-         game->flor_pending_team < 0 && player == game->current_player &&
+         hand_is_playing(game) && no_bid_interrupt_pending(game) &&
+         is_current_player(game, player) &&
          !game->played_slots[player][card_index] &&
-         (!game->flor_enabled || game->flor_resolved ||
-          !truco_has_flor(game->hands[player]));
+         !flor_blocks_player_play(game, player);
 }
 
 static int can_raise_truco(const truco_game *game, unsigned int player) {
   unsigned int player_team;
 
   /* TRUCO_TRUCO_MAX_VALUE is vale cuatro; same team cannot raise twice in a row */
-  if (!is_valid_player(game, player) || game->phase != TRUCO_PHASE_PLAYING ||
-      player != game->current_player || game->pending_truco_value != 0u ||
-      game->envido_pending_team >= 0 || game->flor_pending_team >= 0 ||
+  if (!hand_is_playing(game) || !is_current_player(game, player) ||
+      !no_bid_interrupt_pending(game) ||
       game->truco_value >= TRUCO_TRUCO_MAX_VALUE) {
     return 0;
   }
@@ -1016,13 +1066,14 @@ static int can_raise_truco(const truco_game *game, unsigned int player) {
 static int can_answer_truco(const truco_game *game, unsigned int player) {
   unsigned int player_team;
 
-  if (!is_valid_player(game, player) || game->phase != TRUCO_PHASE_PLAYING ||
-      game->pending_truco_value == 0u || game->envido_pending_team >= 0) {
+  if (!hand_is_playing(game) || game->pending_truco_value == 0u ||
+      game->envido_pending_team >= 0) {
     return 0;
   }
 
   player_team = team_for(game, player);
-  return game->pending_truco_team != (int)player_team;
+  return is_valid_player(game, player) &&
+         game->pending_truco_team != (int)player_team;
 }
 
 static int envido_phase_open(const truco_game *game) {
@@ -1033,7 +1084,7 @@ static int envido_phase_open(const truco_game *game) {
 static int can_call_envido_initial(const truco_game *game, unsigned int player,
                                    envido_bid bid) {
   if (!is_valid_player(game, player) || !is_valid_bid(bid) ||
-      game->phase != TRUCO_PHASE_PLAYING || game->envido_pending_team >= 0 ||
+      !hand_is_playing(game) || game->envido_pending_team >= 0 ||
       !envido_phase_open(game)) {
     return 0;
   }
@@ -1046,7 +1097,7 @@ static int can_call_envido_initial(const truco_game *game, unsigned int player,
     return can_answer_truco(game, player);
   }
 
-  if (player != game->current_player || game->flor_pending_team >= 0) {
+  if (!is_current_player(game, player) || game->flor_pending_team >= 0) {
     return 0;
   }
 
@@ -1058,7 +1109,7 @@ static int can_counter_envido(const truco_game *game, unsigned int player,
   unsigned int player_team;
 
   if (!is_valid_player(game, player) || !is_valid_bid(bid) ||
-      game->phase != TRUCO_PHASE_PLAYING || game->envido_pending_team < 0 ||
+      !hand_is_playing(game) || game->envido_pending_team < 0 ||
       !envido_phase_open(game)) {
     return 0;
   }
@@ -1074,13 +1125,13 @@ static int can_counter_envido(const truco_game *game, unsigned int player,
 static int can_answer_envido(const truco_game *game, unsigned int player) {
   unsigned int player_team;
 
-  if (!is_valid_player(game, player) || game->phase != TRUCO_PHASE_PLAYING ||
-      game->envido_pending_team < 0) {
+  if (!hand_is_playing(game) || game->envido_pending_team < 0) {
     return 0;
   }
 
   player_team = team_for(game, player);
-  return game->envido_pending_team != (int)player_team;
+  return is_valid_player(game, player) &&
+         game->envido_pending_team != (int)player_team;
 }
 
 static int hand_has_flor(const truco_game *game) {
@@ -1109,23 +1160,22 @@ static int opposing_team_has_flor(const truco_game *game, unsigned int team) {
 
 static int can_call_flor(const truco_game *game, unsigned int player) {
   return is_valid_player(game, player) && game->flor_enabled != 0u &&
-         game->phase == TRUCO_PHASE_PLAYING && player == game->current_player &&
+         hand_is_playing(game) && is_current_player(game, player) &&
          !game->flor_resolved && game->flor_pending_team < 0 &&
-         game->pending_truco_value == 0u && game->envido_pending_team < 0 &&
-         !has_any_card_been_played(game) &&
+         no_bid_interrupt_pending(game) && !has_any_card_been_played(game) &&
          truco_has_flor(game->hands[player]);
 }
 
 static int can_answer_flor(const truco_game *game, unsigned int player) {
   unsigned int player_team;
 
-  if (!is_valid_player(game, player) || game->phase != TRUCO_PHASE_PLAYING ||
-      game->flor_pending_team < 0) {
+  if (!hand_is_playing(game) || game->flor_pending_team < 0) {
     return 0;
   }
 
   player_team = team_for(game, player);
-  return game->flor_pending_team != (int)player_team;
+  return is_valid_player(game, player) &&
+         game->flor_pending_team != (int)player_team;
 }
 
 static void apply_default_teams(truco_game *game) {
@@ -1209,8 +1259,7 @@ static truco_status play_card(truco_game *game, unsigned int player,
     return TRUCO_ERR_INVALID_ARGUMENT;
   }
 
-  if (game->phase != TRUCO_PHASE_PLAYING || game->pending_truco_value != 0u ||
-      game->envido_pending_team >= 0 || game->flor_pending_team >= 0) {
+  if (!hand_is_playing(game) || !no_bid_interrupt_pending(game)) {
     return TRUCO_ERR_INVALID_STATE;
   }
 
@@ -1222,8 +1271,7 @@ static truco_status play_card(truco_game *game, unsigned int player,
     return TRUCO_ERR_CARD_ALREADY_PLAYED;
   }
 
-  if (game->flor_enabled != 0u && !game->flor_resolved &&
-      truco_has_flor(game->hands[player])) {
+  if (flor_blocks_player_play(game, player)) {
     return TRUCO_ERR_INVALID_STATE;
   }
 
@@ -1503,18 +1551,22 @@ static truco_status decline_envido(truco_game *game, unsigned int player) {
 }
 
 static int can_go_to_deck(const truco_game *game, unsigned int player) {
-  if (!is_valid_player(game, player) || game->phase != TRUCO_PHASE_PLAYING) {
+  if (!hand_is_playing(game) || !is_valid_player(game, player)) {
     return 0;
   }
-  if (can_answer_truco(game, player) || can_answer_envido(game, player) ||
-      can_answer_flor(game, player)) {
-    return 1;
-  }
-  if (game->pending_truco_value != 0u || game->envido_pending_team >= 0 ||
-      game->flor_pending_team >= 0) {
+
+  switch (hand_subphase(game)) {
+  case TRUCO_SUB_ENVIDO_PENDING:
+    return can_answer_envido(game, player);
+  case TRUCO_SUB_FLOR_PENDING:
+    return can_answer_flor(game, player);
+  case TRUCO_SUB_TRUCO_PENDING:
+    return can_answer_truco(game, player);
+  case TRUCO_SUB_TRICK:
+    return is_current_player(game, player);
+  default:
     return 0;
   }
-  return player == game->current_player;
 }
 
 static truco_status go_to_deck(truco_game *game, unsigned int player) {
@@ -1531,7 +1583,11 @@ static truco_status go_to_deck(truco_game *game, unsigned int player) {
 
   player_team = team_for(game, player);
 
-  if (can_answer_envido(game, player)) {
+  switch (hand_subphase(game)) {
+  case TRUCO_SUB_ENVIDO_PENDING:
+    if (!can_answer_envido(game, player)) {
+      return TRUCO_ERR_INVALID_STATE;
+    }
     winner_team = (unsigned int)game->envido_pending_team;
     add_score(game, winner_team, 1u);
     game->envido_pending_team = TRUCO_NO_TEAM;
@@ -1542,18 +1598,22 @@ static truco_status go_to_deck(truco_game *game, unsigned int player) {
     }
     finish_hand(game, opposing_team(player_team));
     return TRUCO_OK;
-  }
 
-  if (can_answer_flor(game, player)) {
+  case TRUCO_SUB_FLOR_PENDING:
+    if (!can_answer_flor(game, player)) {
+      return TRUCO_ERR_INVALID_STATE;
+    }
     winner_team = (unsigned int)game->flor_pending_team;
     add_score(game, winner_team, game->flor_pending_points);
     game->flor_pending_team = TRUCO_NO_TEAM;
     game->flor_pending_points = 0u;
     game->flor_resolved = 1;
     return TRUCO_OK;
-  }
 
-  if (can_answer_truco(game, player)) {
+  case TRUCO_SUB_TRUCO_PENDING:
+    if (!can_answer_truco(game, player)) {
+      return TRUCO_ERR_INVALID_STATE;
+    }
     winner_team = (unsigned int)game->pending_truco_team;
     game->pending_truco_value = 0u;
     game->pending_truco_team = TRUCO_NO_TEAM;
@@ -1563,25 +1623,98 @@ static truco_status go_to_deck(truco_game *game, unsigned int player) {
     }
     finish_hand(game, winner_team);
     return TRUCO_OK;
-  }
 
-  winner_team = opposing_team(player_team);
-  if (!game->envido_resolved && !game->flor_blocks_envido) {
-    add_score(game, winner_team, 1u);
-    game->envido_resolved = 1;
+  case TRUCO_SUB_TRICK:
+    if (!is_current_player(game, player)) {
+      return TRUCO_ERR_INVALID_STATE;
+    }
+    winner_team = opposing_team(player_team);
+    if (!game->envido_resolved && !game->flor_blocks_envido) {
+      add_score(game, winner_team, 1u);
+      game->envido_resolved = 1;
+    }
+    if (!game->flor_resolved && game->flor_blocks_envido) {
+      add_score(game, winner_team, TRUCO_FLOR_POINTS);
+      game->flor_resolved = 1;
+    }
+    finish_hand(game, winner_team);
+    return TRUCO_OK;
+
+  default:
+    return TRUCO_ERR_INVALID_STATE;
   }
-  if (!game->flor_resolved && game->flor_blocks_envido) {
-    add_score(game, winner_team, TRUCO_FLOR_POINTS);
-    game->flor_resolved = 1;
-  }
-  finish_hand(game, winner_team);
-  return TRUCO_OK;
 }
 
 static void add_legal_command(truco_legal_commands *out,
                               truco_command command) {
   if (out->count < TRUCO_MAX_LEGAL_COMMANDS) {
     out->commands[out->count++] = command;
+  }
+}
+
+static void legal_add_trick_play_commands(const truco_game *game,
+                                          unsigned int player,
+                                          truco_legal_commands *out) {
+  unsigned int slot;
+
+  for (slot = 0u; slot < TRUCO_HAND_CARDS; ++slot) {
+    if (can_play_card(game, player, slot)) {
+      add_legal_command(out, (truco_command)(TRUCO_CMD_PLAY_CARD_0 + slot));
+    }
+  }
+}
+
+static void legal_add_truco_commands(const truco_game *game,
+                                     unsigned int player,
+                                     truco_legal_commands *out) {
+  if (can_raise_truco(game, player)) {
+    add_legal_command(out, TRUCO_CMD_RAISE_TRUCO);
+  }
+
+  if (can_answer_truco(game, player)) {
+    add_legal_command(out, TRUCO_CMD_ACCEPT_BID);
+    add_legal_command(out, TRUCO_CMD_REJECT_BID);
+  }
+}
+
+static void legal_add_flor_commands(const truco_game *game,
+                                    unsigned int player,
+                                    truco_legal_commands *out) {
+  if (can_call_flor(game, player)) {
+    add_legal_command(out, TRUCO_CMD_CALL_FLOR);
+  }
+
+  if (can_answer_flor(game, player)) {
+    add_legal_command(out, TRUCO_CMD_ACCEPT_BID);
+    add_legal_command(out, TRUCO_CMD_REJECT_BID);
+  }
+}
+
+static void legal_add_envido_commands(const truco_game *game,
+                                      unsigned int player,
+                                      truco_legal_commands *out) {
+  if (can_call_envido_initial(game, player, ENVIDO)) {
+    add_legal_command(out, TRUCO_CMD_CALL_ENVIDO);
+  }
+  if (can_call_envido_initial(game, player, REAL_ENVIDO)) {
+    add_legal_command(out, TRUCO_CMD_CALL_REAL_ENVIDO);
+  }
+  if (can_call_envido_initial(game, player, FALTA_ENVIDO)) {
+    add_legal_command(out, TRUCO_CMD_CALL_FALTA_ENVIDO);
+  }
+
+  if (can_answer_envido(game, player)) {
+    add_legal_command(out, TRUCO_CMD_ACCEPT_BID);
+    add_legal_command(out, TRUCO_CMD_REJECT_BID);
+    if (can_counter_envido(game, player, ENVIDO)) {
+      add_legal_command(out, TRUCO_CMD_CALL_ENVIDO);
+    }
+    if (can_counter_envido(game, player, REAL_ENVIDO)) {
+      add_legal_command(out, TRUCO_CMD_CALL_REAL_ENVIDO);
+    }
+    if (can_counter_envido(game, player, FALTA_ENVIDO)) {
+      add_legal_command(out, TRUCO_CMD_CALL_FALTA_ENVIDO);
+    }
   }
 }
 
