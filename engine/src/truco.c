@@ -489,6 +489,16 @@ truco_status truco_game_set_hand(truco_game *game, unsigned int player,
   return TRUCO_OK;
 }
 
+truco_status truco_game_set_score(truco_game *game, unsigned int team,
+                                  unsigned int score) {
+  if (game == 0 || team >= TRUCO_MAX_TEAMS) {
+    return TRUCO_ERR_INVALID_ARGUMENT;
+  }
+
+  game->score[team] = score;
+  return TRUCO_OK;
+}
+
 
 /* card / deck */
 

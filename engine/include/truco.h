@@ -120,6 +120,10 @@ unsigned int truco_game_hand_envido(const truco_game *game, unsigned int player)
 truco_status truco_game_set_hand(truco_game *game,
                                  unsigned int player,
                                  const truco_card cards[TRUCO_HAND_CARDS]);
+/* Test/simulation helper: set team score before or between hands. */
+truco_status truco_game_set_score(truco_game *game,
+                                  unsigned int team,
+                                  unsigned int score);
 
 #ifdef __cplusplus
 }
