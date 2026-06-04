@@ -121,6 +121,7 @@ static void handle_line(size_t client_index, const char *line)
     char buffer[TRUCO_SERVER_LINE_MAX];
     truco_server_status status;
     unsigned int player_count;
+    int flor_enabled;
     char token[TRUCO_SERVER_TOKEN_LEN + 1u];
     unsigned int player;
     unsigned int command_index;
@@ -131,8 +132,8 @@ static void handle_line(size_t client_index, const char *line)
     truco_server_normalize_line(buffer);
 
     if (!clients[client_index].authed) {
-        if (truco_server_parse_host(buffer, &player_count)) {
-            status = truco_server_host(player_count, token, &player,
+        if (truco_server_parse_host(buffer, &player_count, &flor_enabled)) {
+            status = truco_server_host(player_count, flor_enabled, token, &player,
                                        response, sizeof(response));
             if (status == TRUCO_SERVER_OK) {
                 clients[client_index].authed = 1;
@@ -165,7 +166,7 @@ static void handle_line(size_t client_index, const char *line)
         }
 
         send_text(clients[client_index].fd,
-                  "commands: HOST [2|4] | JOIN TOKEN\r\n");
+                  "commands: HOST [2|4] [FLOR] | JOIN TOKEN\r\n");
         return;
     }
 
@@ -349,7 +350,7 @@ int main(void)
                 }
                 send_text(client_fd,
                           "libtruco2 server\r\n"
-                          "HOST [2|4] - create table\r\n"
+                          "HOST [2|4] [FLOR] - create table\r\n"
                           "JOIN TOKEN - join with 6-char token\r\n"
                           "QUIT - end session (in game)\r\n");
                 continue;

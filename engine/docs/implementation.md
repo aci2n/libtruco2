@@ -267,13 +267,19 @@ previously accepted hand value. For the initial Truco call, this is one point.
   `20 + value_a + value_b`.
 - If no pair exists, the score is the highest single card value.
 
-The Envido call commands are valid only before any card has been played and only
-once per hand in this initial implementation. They are:
+The Envido call commands are valid only before any card has been played. While
+Envido is pending, the opposing team may accept, reject, or raise the stake with
+another Envido call:
 
-- `TRUCO_CMD_CALL_ENVIDO`: 2 points if accepted.
-- `TRUCO_CMD_CALL_REAL_ENVIDO`: 3 points if accepted.
-- `TRUCO_CMD_CALL_FALTA_ENVIDO`: points required based on the leading score and
-  target.
+- `TRUCO_CMD_CALL_ENVIDO`: 2 points on the initial call, or +2 when countering.
+- `TRUCO_CMD_CALL_REAL_ENVIDO`: 3 points on the initial call, or +3 when
+  countering.
+- `TRUCO_CMD_CALL_FALTA_ENVIDO`: falta stake on the initial call, or replaces
+  the pending stake when countering.
+
+The last team to call or raise Envido becomes the pending caller. Rejecting awards
+1 point to that team. Accepting compares envido values and awards the accumulated
+stake. Once Envido resolves, no further Envido calls are allowed that hand.
 
 `TRUCO_CMD_ACCEPT_BID` computes each team's best player score when the pending
 bid is Envido. Ties are broken by mano order using `compare_mano_order`.

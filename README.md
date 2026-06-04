@@ -45,6 +45,9 @@ telnet localhost 5555
 HOST
 ```
 
+Use `HOST 2`, `HOST 4`, or add `FLOR` for optional flor rules (`HOST FLOR`, `HOST 4 FLOR`).
+The view includes `rules: flor=on|off`.
+
 Note the 6-character token in the response, then terminal 2:
 
 ```sh
@@ -78,6 +81,8 @@ details.
 - Hand dealing, trick play, parda/tied-trick resolution, and score keeping.
 - Truco / retruco / vale cuatro bidding.
 - Envido, real envido, and falta envido resolution.
+- Envido está primero (counter envido while truco is pending) and envido counter-chains.
+- Optional flor (`truco_game_set_flor_enabled()` / `HOST FLOR`).
 - `TRUCO_CMD_GO_TO_DECK` (ir al mazo).
 
 3v3 games are reserved for a future rule module. Six-player tables return
