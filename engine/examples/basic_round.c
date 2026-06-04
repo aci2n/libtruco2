@@ -33,29 +33,28 @@ int main(void)
 
     if (truco_game_set_player_count(game, 4u) != TRUCO_OK ||
         truco_game_set_seed(game, 42u) != TRUCO_OK ||
-        truco_game_init(game) != TRUCO_OK ||
-        truco_game_apply(game, 0u, TRUCO_CMD_START_HAND) != TRUCO_OK) {
+        truco_game_apply(game, 3u, TRUCO_CMD_START_HAND) != TRUCO_OK) {
         fprintf(stderr, "could not start truco game\n");
-        truco_game_delete(game);
+        truco_game_delete(&game);
         return 1;
     }
 
     printf("current player: %u\n", truco_game_current_player(game));
     for (player = 0u; player < truco_game_player_count(game); ++player) {
-        truco_card hand[TRUCO_HAND_CARDS];
-
         printf("player %u team %u:", player, truco_game_team_for_player(game, player));
         for (slot = 0u; slot < TRUCO_HAND_CARDS; ++slot) {
-            if (truco_game_hand_card(game, player, slot, &hand[slot]) != TRUCO_OK) {
+            truco_card card;
+
+            if (truco_game_hand_card(game, player, slot, &card) != TRUCO_OK) {
                 fprintf(stderr, "could not read hand card\n");
-                truco_game_delete(game);
+                truco_game_delete(&game);
                 return 1;
             }
-            printf(" %u-%s", (unsigned int)hand[slot].rank, suit_name(hand[slot].suit));
+            printf(" %u-%s", (unsigned int)card.rank, suit_name(card.suit));
         }
-        printf(" envido=%u\n", truco_envido_points(hand));
+        printf(" envido=%u\n", truco_game_hand_envido(game, player));
     }
 
-    truco_game_delete(game);
+    truco_game_delete(&game);
     return 0;
 }

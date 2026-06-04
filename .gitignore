@@ -1,2 +1,6 @@
-/build/
-/lib/
+release/
+**/build/
+**/lib/
+**/*.dSYM/
+*.o
+*.a

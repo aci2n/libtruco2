@@ -1,0 +1,7 @@
+.git
+release
+**/build
+**/lib
+**/*.dSYM
+*.o
+*.a

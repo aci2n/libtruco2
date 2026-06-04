@@ -11,7 +11,6 @@ extern "C" {
 #define TRUCO_VERSION_MINOR 2
 #define TRUCO_VERSION_PATCH 0
 
-#define TRUCO_DECK_SIZE 40u
 #define TRUCO_HAND_CARDS 3u
 #define TRUCO_MAX_LEGAL_COMMANDS 12u
 #define TRUCO_MAX_PLAYERS 6u
@@ -52,7 +51,8 @@ typedef enum truco_command {
     TRUCO_CMD_CALL_REAL_ENVIDO,
     TRUCO_CMD_CALL_FALTA_ENVIDO,
     TRUCO_CMD_ACCEPT_BID,
-    TRUCO_CMD_REJECT_BID
+    TRUCO_CMD_REJECT_BID,
+    TRUCO_CMD_GO_TO_DECK
 } truco_command;
 
 typedef struct truco_card {
@@ -67,11 +67,16 @@ typedef struct truco_legal_commands {
 
 typedef struct truco_game truco_game;
 
-/* Allocates a game and initializes it with default two-player settings. */
+/* Byte size of truco_game for custom allocators (uninitialized memory is ok). */
+size_t truco_game_size(void);
+/* Allocates with malloc and factory-resets. Pair with truco_game_destroy. */
 truco_game *truco_game_create(void);
-/* Resets runtime state from the current settings (call after set_* changes). */
+/* Factory reset on caller-owned storage (truco_game_size bytes). Never free here. */
 truco_status truco_game_init(truco_game *game);
-void truco_game_delete(truco_game *game);
+/* Frees memory from truco_game_create. Do not use on init-only buffers. */
+void truco_game_destroy(truco_game *game);
+/* destroy + *game = 0. */
+void truco_game_delete(truco_game **game);
 
 truco_status truco_game_set_player_count(truco_game *game, unsigned int player_count);
 truco_status truco_game_set_target_score(truco_game *game, unsigned int target_score);
@@ -80,15 +85,6 @@ truco_status truco_game_set_initial_dealer(truco_game *game, unsigned int initia
 truco_status truco_game_set_team_for_player(truco_game *game,
                                             unsigned int player,
                                             unsigned int team);
-
-truco_card truco_make_card(truco_suit suit, unsigned int rank);
-int truco_card_is_valid(truco_card card);
-int truco_card_power(truco_card card);
-int truco_card_compare(truco_card left, truco_card right);
-unsigned int truco_envido_points(const truco_card cards[TRUCO_HAND_CARDS]);
-
-truco_status truco_deck(truco_card *cards, size_t count);
-truco_status truco_shuffle(truco_card *cards, size_t count, unsigned int *seed);
 
 truco_status truco_game_apply(truco_game *game,
                               unsigned int player,
@@ -106,13 +102,21 @@ unsigned int truco_game_pending_truco_value(const truco_game *game);
 unsigned int truco_game_pending_envido_points(const truco_game *game);
 unsigned int truco_game_next_truco_value(const truco_game *game);
 unsigned int truco_game_score(const truco_game *game, unsigned int team);
+/* 0/1 winning team, or -1 if the hand is not over yet */
 int truco_game_hand_winner(const truco_game *game);
+/* 0/1 trick winner, -1 parda, -2 if trick index is invalid or not played yet */
 int truco_game_trick_winner(const truco_game *game, unsigned int trick);
 
 truco_status truco_game_hand_card(const truco_game *game,
                                   unsigned int player,
                                   unsigned int slot,
                                   truco_card *card_out);
+/* card on the table for trick/player; ERR_INVALID_STATE if not played yet */
+truco_status truco_game_trick_card(const truco_game *game,
+                                   unsigned int trick,
+                                   unsigned int player,
+                                   truco_card *card_out);
+unsigned int truco_game_hand_envido(const truco_game *game, unsigned int player);
 truco_status truco_game_set_hand(truco_game *game,
                                  unsigned int player,
                                  const truco_card cards[TRUCO_HAND_CARDS]);

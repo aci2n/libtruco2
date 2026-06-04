@@ -1,76 +1,52 @@
-CC ?= cc
-AR ?= ar
-RM ?= rm -f
-MKDIR_P ?= mkdir -p
+.PHONY: all clean test engine server install uninstall examples linux-release deploy-vps
 
-PREFIX ?= /usr/local
-DESTDIR ?=
-LIBDIR ?= $(PREFIX)/lib
-INCLUDEDIR ?= $(PREFIX)/include
+REMOTE ?= root@135.181.201.184
+PODMAN ?= podman
+LINUX_IMAGE ?= ubuntu:24.04
+LINUX_PLATFORM ?= linux/amd64
+LINUX_BIN := release/truco_server
+LINUX_IMAGE_TAG := truco-linux-build
+LINUX_EXTRACT := truco-linux-extract
 
-CPPFLAGS ?= -Iinclude
+all: engine server
 
-BASE_CFLAGS := -std=c99 -Wall -Wextra -Wpedantic -fPIC
-DEBUG_CFLAGS := -g -O0 -DDEBUG=1
-RELEASE_CFLAGS := -O2
+engine:
+	$(MAKE) -C engine
 
-DEBUG ?= 1
+server:
+	$(MAKE) -C server
 
-ifeq ($(DEBUG),1)
-CFLAGS ?= $(BASE_CFLAGS) $(DEBUG_CFLAGS)
-else
-CFLAGS ?= $(BASE_CFLAGS) $(RELEASE_CFLAGS)
-endif
+test: engine-test server-test
 
-LDFLAGS ?=
+engine-test:
+	$(MAKE) -C engine test
 
-LIB_NAME := truco
-STATIC_LIB := lib/lib$(LIB_NAME).a
-SHARED_LIB := lib/lib$(LIB_NAME).so
-SRC := src/truco.c
-OBJ := build/truco.o
-TEST_BIN := build/test_truco
-EXAMPLE_BIN := build/basic_round
+server-test:
+	$(MAKE) -C server test
 
-.PHONY: all clean test install uninstall examples
+examples:
+	$(MAKE) -C engine examples
 
-all: $(STATIC_LIB) $(SHARED_LIB)
-
-$(OBJ): $(SRC) include/truco.h
-	$(MKDIR_P) build
-	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
-
-$(STATIC_LIB): $(OBJ)
-	$(MKDIR_P) lib
-	$(AR) rcs $@ $^
-
-$(SHARED_LIB): $(OBJ)
-	$(MKDIR_P) lib
-	$(CC) -shared $(LDFLAGS) -o $@ $^
-
-$(TEST_BIN): tests/test_truco.c $(STATIC_LIB) include/truco.h
-	$(MKDIR_P) build
-	$(CC) $(CPPFLAGS) $(CFLAGS) tests/test_truco.c $(STATIC_LIB) -o $@
-
-$(EXAMPLE_BIN): examples/basic_round.c $(STATIC_LIB) include/truco.h
-	$(MKDIR_P) build
-	$(CC) $(CPPFLAGS) $(CFLAGS) examples/basic_round.c $(STATIC_LIB) -o $@
-
-test: $(TEST_BIN)
-	./$(TEST_BIN)
-
-examples: $(EXAMPLE_BIN)
-
-install: all
-	$(MKDIR_P) "$(DESTDIR)$(LIBDIR)" "$(DESTDIR)$(INCLUDEDIR)"
-	cp $(STATIC_LIB) "$(DESTDIR)$(LIBDIR)/"
-	cp $(SHARED_LIB) "$(DESTDIR)$(LIBDIR)/"
-	cp include/truco.h "$(DESTDIR)$(INCLUDEDIR)/"
+install:
+	$(MAKE) -C engine install
 
 uninstall:
-	$(RM) "$(DESTDIR)$(LIBDIR)/lib$(LIB_NAME).a"
-	$(RM) "$(DESTDIR)$(LIBDIR)/lib$(LIB_NAME).so"
-	$(RM) "$(DESTDIR)$(INCLUDEDIR)/truco.h"
+	$(MAKE) -C engine uninstall
 
 clean:
-	$(RM) -r build lib
+	$(MAKE) -C engine clean
+	$(MAKE) -C server clean
+
+linux-release:
+	mkdir -p release
+	$(PODMAN) build --platform $(LINUX_PLATFORM) -t $(LINUX_IMAGE_TAG) -f Containerfile .
+	-$(PODMAN) rm -f $(LINUX_EXTRACT) 2>/dev/null
+	$(PODMAN) create --name $(LINUX_EXTRACT) $(LINUX_IMAGE_TAG)
+	$(PODMAN) cp $(LINUX_EXTRACT):/src/server/build/truco_server $(LINUX_BIN)
+	$(PODMAN) rm -f $(LINUX_EXTRACT)
+	chmod +x $(LINUX_BIN)
+	file $(LINUX_BIN)
+
+deploy-vps:
+	test -f $(LINUX_BIN)
+	scp $(LINUX_BIN) $(REMOTE):truco_server

@@ -1,0 +1,24 @@
+# libtruco2 — from repo root: lldb
+# LLDB skips cwd .lldbinit unless you enable it. Pick one:
+#   lldb --local-lldbinit
+#   settings set target.load-cwd-lldbinit true   (in ~/.lldbinit)
+# Long output: LLDB_USE_PAGER=0 lldb
+
+settings set target.inline-breakpoint-strategy always
+settings set target.max-children-count 256
+settings set target.max-children-depth 20
+settings set target.prefer-dynamic-value run-target
+settings set interpreter.echo-commands false
+
+target create engine/build/test_truco
+settings append target.source-map ./engine/src engine/src
+settings append target.source-map ./engine/include engine/include
+
+# Examples:
+#   run
+#   breakpoint set -n truco_game_apply
+#   breakpoint set -f truco.c -l 758 -c 'player == 0'
+#   thread backtrace
+#   truco-bt
+
+command alias -h "All frames, unfiltered (gdb: bt). frame select N; frame variable for locals." -- truco-bt thread backtrace -u -c 0

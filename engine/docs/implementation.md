@@ -18,15 +18,20 @@ The library is intentionally small and conservative:
 
 The implementation avoids callbacks, threads, global mutable state, and I/O
 inside the engine. Game state lives in a heap-allocated opaque `truco_game`
-created with `truco_game_create` and released with `truco_game_delete`.
+created with `truco_game_create` and released with `truco_game_destroy` or
+`truco_game_delete`.
 
 ## Public API layout
 
-The public API is declared in `include/truco.h`. It exposes:
+Embedders include only `include/truco.h` (installed by `make install`). The
+engine and unit tests also use `include/truco_internal.h` for card ranking, deck
+construction, and envido math on raw hands.
+
+`truco.h` exposes:
 
 - Compile-time constants:
-  - `TRUCO_DECK_SIZE`: 40 cards.
   - `TRUCO_HAND_CARDS`: 3 cards per player.
+  - `TRUCO_MAX_LEGAL_COMMANDS`: legal command buffer size.
   - `TRUCO_MAX_PLAYERS`: 6, reserving space for 3v3.
   - `TRUCO_MAX_TEAMS`: 2.
 - Value types:
@@ -35,11 +40,15 @@ The public API is declared in `include/truco.h`. It exposes:
 - Opaque type:
   - `truco_game` (forward-declared in the header, defined in `src/truco.c`)
 - Small enums for status codes, suits, phases, and commands.
-- Stateless card/deck helpers.
-- `truco_game_apply`, the only public game mutation entry point.
-- `truco_game_legal_commands`, the non-mutating command discovery API.
+- Table setup, `truco_game_apply`, `truco_game_legal_commands`, and game-state
+  getters (including `truco_game_hand_envido` and `truco_game_set_hand` for
+  deterministic tests).
 - Bid metadata getters: `truco_game_pending_truco_value`,
   `truco_game_pending_envido_points`, `truco_game_next_truco_value`.
+
+`truco_internal.h` exposes deck helpers (`truco_deck`, `truco_shuffle`),
+`TRUCO_DECK_SIZE`, and card rule helpers (`truco_make_card`,
+`truco_card_power`, `truco_card_compare`, `truco_envido_points`, etc.).
 
 The API uses explicit status returns rather than `errno`. Functions return
 `TRUCO_OK` on success or a negative `truco_status` value on failure.
@@ -75,25 +84,35 @@ choose one, then pass the chosen enum back to `truco_game_apply`.
 Internally, legal action discovery uses the same `can_*` predicates as the
 dispatch helpers. This keeps command availability and command execution aligned.
 
+Turn restrictions:
+
+- `TRUCO_CMD_START_HAND` is legal only for the dealing player (`dealer` on
+  `HAND_OVER`, `initial_dealer` on `READY`).
+- `TRUCO_CMD_RAISE_TRUCO`, envido calls, `TRUCO_CMD_PLAY_CARD_*`, and
+  `TRUCO_CMD_GO_TO_DECK` (with no pending bid) require `player == current_player`.
+- Bid responses (`ACCEPT_BID` / `REJECT_BID`) and `GO_TO_DECK` while answering a
+  pending bid use the opposing team, not the current trick player.
+
 ## Memory and ownership
 
-`truco_game` is opaque and heap-allocated. `truco_game_create` initializes the
-object; `truco_game_init` is the public reset entry point:
+`truco_game` is opaque. `truco_game_create` allocates and factory-resets; call
+`truco_game_set_*` before play. For custom allocators:
 
 ```c
-truco_game *game = truco_game_create();
-truco_game_set_player_count(game, 4);
+truco_game *game = (truco_game *)my_alloc(truco_game_size());
 truco_game_init(game);
-truco_game_delete(game);
+truco_game_set_player_count(game, 4);
+/* ... */
+my_free(game);
 ```
 
 Internally, `struct truco_game` contains fixed arrays sized by
 `TRUCO_MAX_PLAYERS` and `TRUCO_HAND_CARDS`:
 
-- `hands[player][slot]`
-- `played_slots[player][slot]`
-- `trick_cards[trick][player]`
-- `trick_played[trick][player]`
+- `hands[player][slot]` — cards still in hand
+- `played_slots[player][slot]` — which hand cards that player already played (0/1 per slot)
+- `trick_cards[trick][player]` — card on the table for that trick
+- `trick_played[trick][player]` — whether that player already played in that trick (0/1)
 - `trick_winner_team[trick]`
 - `trick_winner_player[trick]`
 
@@ -105,22 +124,23 @@ version their own serialized representation.
 
 ## Table configuration
 
-The caller configures the table with setters such as
-`truco_game_set_player_count` before `truco_game_init`:
+After `truco_game_create` or `truco_game_init`, configure with setters before the
+first `TRUCO_CMD_START_HAND`. `truco_game_init` factory-resets all fields (call
+`set_*` again afterward). The first hand from `TRUCO_PHASE_READY` uses
+`initial_dealer`; later hands rotate `dealer` as usual.
 
 The default team assignment alternates players by index:
 
 - 1v1: player 0 vs player 1.
 - 2v2: players 0 and 2 vs players 1 and 3.
-- 3v3 capacity: players 0, 2, 4 vs players 1, 3, 5, but initialization is not
+- 3v3 capacity: players 0, 2, 4 vs players 1, 3, 5, but starting a hand is not
   enabled yet.
 
-`truco_game_init` currently accepts only `player_count == 2` or
-`player_count == 4`. Six-player games return `TRUCO_ERR_UNSUPPORTED_RULES` so
-the capacity is visible without pretending that 3v3 rule differences are solved.
+Only `player_count == 2` or `player_count == 4` can start a hand. Six-player
+tables return `TRUCO_ERR_UNSUPPORTED_RULES` from `TRUCO_CMD_START_HAND`.
 
-Callers may customize `config.team_for_player[]` before initialization as long
-as each active player maps to team `0` or `1`.
+Callers may customize teams with `truco_game_set_team_for_player` as long as
+each active player maps to team `0` or `1`.
 
 ## Game phases
 
@@ -131,9 +151,10 @@ The engine tracks coarse state with `truco_phase`:
 - `TRUCO_PHASE_HAND_OVER`: a hand ended and another hand can be started.
 - `TRUCO_PHASE_GAME_OVER`: a team reached `target_score`.
 
-`TRUCO_CMD_START_HAND` is valid only from `READY` or `HAND_OVER`. Starting a new
-hand during `PLAYING` would overwrite an in-progress hand, so dispatch returns
-`TRUCO_ERR_INVALID_STATE`.
+`TRUCO_CMD_START_HAND` is valid only from `READY` or `HAND_OVER`, and only for
+the current dealer. Starting a new hand during `PLAYING` would overwrite an
+in-progress hand, so dispatch returns `TRUCO_ERR_INVALID_STATE`. A non-dealer
+gets `TRUCO_ERR_NOT_PLAYERS_TURN`.
 
 ## Dealing and randomness
 
@@ -259,6 +280,18 @@ bid is Envido. Ties are broken by mano order using `compare_mano_order`.
 
 `TRUCO_CMD_REJECT_BID` awards one point to the calling team when the pending bid
 is Envido.
+
+## Ir al mazo
+
+`TRUCO_CMD_GO_TO_DECK` abandons the current hand (ir al mazo). Any player may use
+it while `TRUCO_PHASE_PLAYING`.
+
+- With a pending Truco answer: same hand winner as `TRUCO_CMD_REJECT_BID`, plus one
+  envido point to that team when envido is not resolved yet.
+- With a pending Envido answer: one point to the envido caller, then the hand ends
+  at the current Truco value for the caller's team.
+- Otherwise: the opposing team wins the hand at the current Truco value, plus one
+  envido point when envido is not resolved yet.
 
 ## Scoring and target score
 
